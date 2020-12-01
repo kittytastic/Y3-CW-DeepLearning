@@ -1,0 +1,54 @@
+\documentclass{article}
+
+% latex packages, feel free to add more here like 'tikz'
+\usepackage{style/conference}
+\usepackage{opensans}
+\usepackage{graphicx}
+\usepackage{biblatex}
+\usepackage{fontawesome}
+\usepackage[hidelinks]{hyperref}
+
+% to reference, paste the BibTeX obtained from google scholar into references.bib
+\addbibresource{references.bib}
+\input{style/math_commands.tex}
+
+% replace this title with your own
+\title{Winged Horses with an Autoencoder}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+    This paper proposes using an autoencoder to generate images that look like a Pegasus. This abstract should be short and concise, about 8-10 lines long.
+\end{abstract}
+
+% this is where the sections begin
+\section{Methodology}
+The method is to train an autoencoder~\cite{kramer1991nonlinear}, by minimising the squared L2 loss:
+\begin{equation}
+    \mathcal{L}_{\textrm{AE}} = \mathbb{E}_{\vx\sim p_{\textrm{data}}}[\, \lVert \vx - D(E(\vx)) \rVert^2 ]
+\end{equation}
+The methodology should be very concise and the mathematical notation should try to follow \href{https://v1.overleaf.com/latex/templates/template-for-iclr-2021-conference-submission/mmpfhsxmqdkp.pdf}{the ICLR conference guidlines \faExternalLink}. If you are not familiar with \LaTeX, you can use \href{https://www.codecogs.com/latex/eqneditor.php}{this online \LaTeX~equation editor \faExternalLink}. You may want to include an architectural diagram:
+\begin{center}
+    \includegraphics[width=0.5\textwidth]{figures/architecture.pdf}
+\end{center}
+The architectural diagram above was created using Inkscape and exported to a PDF. This was then uploaded to the figures directory on the left.
+
+\section{Results}
+The results look very blurry, where the best batch of images looks like this:
+\begin{center}
+    \includegraphics[width=0.5\textwidth]{figures/best-batch.png}
+\end{center}
+From this batch, the most Pegasus-like image (with quite a stretch of the imagination) is:
+\begin{center}
+    \includegraphics[width=0.075\textwidth]{figures/best-pegasus.png}
+\end{center}
+
+\section{Limitations}
+It's very difficult to see anything that looks like a Pegasus. In the future, this could be improved by training for more than 10 epochs, although this was not possible due to the time constraints.
+
+\section*{Bonuses}
+This submission has a total bonus of -4 marks (a penalty), as it is trained only on CIFAR-10, and the Pegasus has a dark body colour.
+
+% you can have an unlimited number of references (they can go on the 5th page and span many additional pages without any penalty)
+\printbibliography
+\end{document}
