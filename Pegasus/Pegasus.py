@@ -35,6 +35,7 @@ dataset = 'cifar10'
 
 # %%
 targetGPU = "GeForce GTX 1080 Ti"
+
 if torch.cuda.is_available():
     targetDeviceNumber = None
 
@@ -48,7 +49,7 @@ if torch.cuda.is_available():
         print("%s %s"%(prefix, torch.cuda.get_device_name(i)))
 
     if targetDeviceNumber != None:
-        device = torch.cuda.device(targetDeviceNumber)
+        device = torch.device('cuda:%d'%targetDeviceNumber)
     else:
         torch.device('cuda')
         raise Exception("Cannot find target GPU")
@@ -203,11 +204,13 @@ plt.show()
 
 # %% id="HjHPwDAe-YoI"
 # optional example code to save your training progress for resuming later if you authenticated Google Drive previously
-torch.save({'A':A.state_dict(), 'optimiser':optimiser.state_dict(), 'epoch':epoch}, 'drive/My Drive/training/save.chkpt')
+torch.save({'A':A.state_dict(), 'optimiser':optimiser.state_dict(), 'epoch':epoch}, './checkpoint.chkpt')
 
 # %% id="nrCN7YQ5-2J8"
 # optional example to resume training if you authenticated Google Drive previously
-params = torch.load('drive/My Drive/training/save.chkpt')
+params = torch.load('./checkpoint.chkpt')
 A.load_state_dict(params['A'])
 optimiser.load_state_dict(params['optimiser'])
 epoch = params['epoch']
+
+# %%
