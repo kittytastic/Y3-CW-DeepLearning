@@ -155,9 +155,14 @@ epoch = 0
 # **Main training loop**
 
 # %% id="kb5909Y8D_zx" colab={"base_uri": "https://localhost:8080/", "height": 1000} outputId="eab10264-19a5-43a5-885b-e2580535af74"
+from tqdm import trange
+
 # training loop, you will want to train for more than 10 here!
-epoch = 0
-while (epoch<10):
+start_epoch = 0
+total_epoch = 10
+
+epoch_iter = trange(start_epoch, total_epoch)
+for epoch in epoch_iter:
     
     # array(s) for the performance measures
     loss_arr = np.zeros(0)
@@ -181,11 +186,10 @@ while (epoch<10):
 
         # collect stats
         loss_arr = np.append(loss_arr, loss.item())
+
     
     # print loss
-    print('loss ' + str(loss.mean()))
-
-    epoch = epoch+1
+    epoch_iter.set_description("Current Loss %.3f         " % loss.item())
 
 # %% id="liuFFKKE1pZp" colab={"base_uri": "https://localhost:8080/", "height": 630} outputId="d86ea253-f2e3-4c71-d42b-770d60c7ba51"
 # sample your model (autoencoders are not good at this)
