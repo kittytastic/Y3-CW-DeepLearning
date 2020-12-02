@@ -156,6 +156,7 @@ epoch = 0
 
 # %% id="kb5909Y8D_zx" colab={"base_uri": "https://localhost:8080/", "height": 1000} outputId="eab10264-19a5-43a5-885b-e2580535af74"
 # training loop, you will want to train for more than 10 here!
+epoch = 0
 while (epoch<10):
     
     # array(s) for the performance measures
@@ -180,22 +181,17 @@ while (epoch<10):
 
         # collect stats
         loss_arr = np.append(loss_arr, loss.item())
-
-    # sample your model (autoencoders are not good at this)
-    z = torch.randn_like(z)
-    g = A.decode(z)
-
-    # plot some examples
+    
+    # print loss
     print('loss ' + str(loss.mean()))
-    plt.rcParams['figure.dpi'] = 100
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(g[:8]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
-    plt.pause(0.0001)
 
     epoch = epoch+1
 
 # %% id="liuFFKKE1pZp" colab={"base_uri": "https://localhost:8080/", "height": 630} outputId="d86ea253-f2e3-4c71-d42b-770d60c7ba51"
+# sample your model (autoencoders are not good at this)
+z = torch.randn_like(z)
+g = A.decode(z)
+
 # now show your best batch of data for the submission, right click and save the image for your report
 plt.rcParams['figure.dpi'] = 175
 plt.grid(False)
