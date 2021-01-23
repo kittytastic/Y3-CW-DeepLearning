@@ -28,9 +28,9 @@ import torchvision
 import matplotlib.pyplot as plt
 
 # hyperparameters
-batch_size  = 64
+batch_size  = 256
 n_channels  = 3
-latent_size = 512
+latent_size = 32
 dataset = 'cifar10'
 
 # %%
@@ -159,7 +159,7 @@ from tqdm import trange
 
 # training loop, you will want to train for more than 10 here!
 start_epoch = 0
-total_epoch = 10
+total_epoch = 200
 
 epoch_iter = trange(start_epoch, total_epoch)
 for epoch in epoch_iter:
@@ -189,7 +189,7 @@ for epoch in epoch_iter:
 
     
     # print loss
-    epoch_iter.set_description("Current Loss %.3f         " % loss.item())
+    epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
 
 # %% id="liuFFKKE1pZp" colab={"base_uri": "https://localhost:8080/", "height": 630} outputId="d86ea253-f2e3-4c71-d42b-770d60c7ba51"
 # sample your model (autoencoders are not good at this)
@@ -201,6 +201,46 @@ plt.rcParams['figure.dpi'] = 175
 plt.grid(False)
 plt.imshow(torchvision.utils.make_grid(g).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
 plt.show()
+
+# %%
+# Plot Latent Space
+import umap
+import pandas as pd
+import umap.plot
+
+plot_count = 1000
+
+acc_labels = None
+acc_vals = None
+
+for i in range(plot_count//batch_size):
+    # sample x from the dataset
+    x,l = next(train_iterator)
+    x,t = x.to(device), l.to(device)
+
+    z = A.encode(x).cpu()
+
+    latent_space = z.detach().numpy()
+    labels = np.array(l)
+    
+    latent_space = np.squeeze(latent_space)
+
+    if not acc_labels is None:
+        acc_labels = np.concatenate((acc_labels, labels), axis=0)
+        acc_vals = np.concatenate((acc_vals, latent_space))
+    else:
+        acc_labels = labels
+        acc_vals = latent_space
+
+
+df = pd.DataFrame(data=acc_vals)
+
+mapper = umap.UMAP(n_neighbors=15).fit(df)
+df['labels'] = acc_labels
+df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
+umap.plot.points(mapper, labels=df["labels"])
+
+
 
 # %% id="HjHPwDAe-YoI"
 # optional example code to save your training progress for resuming later if you authenticated Google Drive previously
