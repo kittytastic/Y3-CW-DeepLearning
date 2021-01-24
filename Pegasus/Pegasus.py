@@ -7,9 +7,10 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.7.1
+#       jupytext_version: 1.9.1
 #   kernelspec:
 #     display_name: Python 3
+#     language: python
 #     name: python3
 # ---
 
@@ -87,7 +88,7 @@ if dataset == 'stl10':
 
 train_iterator = iter(cycle(train_loader))
 
-# %% id="BtJs-qxHRLXz" colab={"base_uri": "https://localhost:8080/", "height": 630} outputId="770d6f89-c5dc-4b2d-fca4-0d7b96ec256e"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 630} id="BtJs-qxHRLXz" outputId="770d6f89-c5dc-4b2d-fca4-0d7b96ec256e"
 # let's view some of the training data
 plt.rcParams['figure.dpi'] = 175
 x,t = next(train_iterator)
@@ -100,7 +101,7 @@ plt.show()
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define a simple convolutional autoencoder**
 
-# %% id="RGbLY6X-NH4O" colab={"base_uri": "https://localhost:8080/", "height": 35} outputId="e2f24af2-f398-42fc-b173-9f710147718e"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 35} id="RGbLY6X-NH4O" outputId="e2f24af2-f398-42fc-b173-9f710147718e"
 # simple block of convolution, batchnorm, and leakyrelu
 class Block(nn.Module):
     def __init__(self, in_f, out_f):
@@ -154,12 +155,12 @@ epoch = 0
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Main training loop**
 
-# %% id="kb5909Y8D_zx" colab={"base_uri": "https://localhost:8080/", "height": 1000} outputId="eab10264-19a5-43a5-885b-e2580535af74"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 1000} id="kb5909Y8D_zx" outputId="eab10264-19a5-43a5-885b-e2580535af74"
 from tqdm import trange
 
 # training loop, you will want to train for more than 10 here!
 start_epoch = 0
-total_epoch = 200
+total_epoch = 3
 
 epoch_iter = trange(start_epoch, total_epoch)
 for epoch in epoch_iter:
@@ -191,7 +192,7 @@ for epoch in epoch_iter:
     # print loss
     epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
 
-# %% id="liuFFKKE1pZp" colab={"base_uri": "https://localhost:8080/", "height": 630} outputId="d86ea253-f2e3-4c71-d42b-770d60c7ba51"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 630} id="liuFFKKE1pZp" outputId="d86ea253-f2e3-4c71-d42b-770d60c7ba51"
 # sample your model (autoencoders are not good at this)
 z = torch.randn_like(z)
 g = A.decode(z)
