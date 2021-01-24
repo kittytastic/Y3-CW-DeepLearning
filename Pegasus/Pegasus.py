@@ -152,6 +152,156 @@ print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vec
 optimiser = torch.optim.Adam(A.parameters(), lr=0.001)
 epoch = 0
 
+
+# %% tags=[]
+class View(nn.Module):
+    def __init__(self, shape):
+        super(View, self).__init__()
+        self.shape = shape
+
+    def forward(self, x):
+        return x.view(*self.shape)
+
+class VAE(nn.Module):
+    def __init__(self, f=16):
+        super().__init__()
+
+        self.encode = nn.Sequential(
+            Block(n_channels, f),
+            nn.MaxPool2d(kernel_size=(2,2)), # output = 16x16 (if cifar10, 48x48 if stl10)
+            Block(f  ,f*2),
+            nn.MaxPool2d(kernel_size=(2,2)), # output = 8x8
+            Block(f*2,f*4),
+            nn.MaxPool2d(kernel_size=(2,2)), # output = 4x4
+            Block(f*4,f*4),
+            nn.MaxPool2d(kernel_size=(2,2)), # output = 2x2
+            Block(f*4,f*4),
+            nn.MaxPool2d(kernel_size=(2,2)), # output = 1x1
+            Block(f*4,latent_size),
+            nn.Flatten()
+        )
+
+        self.decode = nn.Sequential(
+            View((batch_size, latent_size, 1, 1)),
+            nn.Upsample(scale_factor=2), # output = 2x2
+            Block(latent_size,f*4),
+            nn.Upsample(scale_factor=2), # output = 4x4
+            Block(f*4,f*4),
+            nn.Upsample(scale_factor=2), # output = 8x8
+            Block(f*4,f*2),
+            nn.Upsample(scale_factor=2), # output = 16x16
+            Block(f*2,f  ),
+            nn.Upsample(scale_factor=2), # output = 32x32
+            nn.Conv2d(f,n_channels, 3,1,1),
+            nn.Sigmoid()
+        )
+
+        # distribution parameters
+        self.fc_mu = nn.Linear(latent_size, latent_size)
+        self.fc_var = nn.Linear(latent_size, latent_size)
+
+        # for the gaussian likelihood
+        self.log_scale = nn.Parameter(torch.Tensor([0.0]))
+
+        self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
+
+    def kl_divergence(self, z, mu, std):
+        # --------------------------
+        # Monte carlo KL divergence
+        # --------------------------
+        # 1. define the first two probabilities (in this case Normal for both)
+        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
+        q = torch.distributions.Normal(mu, std)
+
+        # 2. get the probabilities from the equation
+        log_qzx = q.log_prob(z)
+        log_pz = p.log_prob(z)
+
+        # kl
+        kl = (log_qzx - log_pz)
+        
+        # sum over last dim to go from single dim distribution to multi-dim
+        kl = kl.sum(-1)
+        return kl
+
+    def gaussian_likelihood(self, x_hat, logscale, x):
+        scale = torch.exp(logscale)
+        mean = x_hat
+        dist = torch.distributions.Normal(mean, scale)
+
+        # measure prob of seeing image under p(x|z)
+        log_pxz = dist.log_prob(x)
+        return log_pxz.sum(dim=(1, 2, 3))
+
+    def trainingStep(self, x, t):
+
+        #print()
+        #print(x.shape)
+        # encode x to get the mu and variance parameters
+        x_encoded = self.encode(x)
+        #print(x_encoded.shape)
+        #print(self.fc_mu)
+        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+
+        # sample z from q
+        std = torch.exp(log_var / 2)
+        q = torch.distributions.Normal(mu, std)
+        z = q.rsample()
+
+        # decoded
+        x_hat = self.decode(z)
+
+        # reconstruction loss
+        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
+
+        # kl
+        kl = self.kl_divergence(z, mu, std)
+
+        # elbo
+        elbo_loss = (kl - recon_loss)
+        elbo_loss = elbo_loss.mean()
+
+        # backpropagate to compute the gradient of the loss w.r.t the parameters and optimise
+        optimiser.zero_grad()
+        elbo_loss.backward()
+        optimiser.step()
+
+
+        return elbo_loss
+
+V = VAE().to(device)
+print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(V.parameters()))}')
+epoch = 0
+
+from tqdm import trange
+
+# training loop, you will want to train for more than 10 here!
+start_epoch = 0
+total_epoch = 3
+
+epoch_iter = trange(start_epoch, total_epoch)
+for epoch in epoch_iter:
+    
+    # array(s) for the performance measures
+    loss_arr = np.zeros(0)
+
+    # iterate over some of the train dateset
+    for i in range(100):
+
+        # sample x from the dataset
+        x,t = next(train_iterator)
+        x,t = x.to(device), t.to(device)
+
+        loss = V.trainingStep(x, t)
+
+        # collect stats
+        loss_arr = np.append(loss_arr, loss.item())
+
+    
+    # print loss
+    #epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+
+
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Main training loop**
 
