@@ -74,6 +74,7 @@ if dataset == 'cifar10':
         ])),
         shuffle=True, batch_size=batch_size, drop_last=True
     )
+    #print(len(train_loader))
     class_names = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
 # stl10 has larger images which are much slower to train on. You should develop your method with CIFAR-10 before experimenting with STL-10
@@ -94,8 +95,51 @@ plt.rcParams['figure.dpi'] = 175
 x,t = next(train_iterator)
 x,t = x.to(device), t.to(device)
 plt.grid(False)
+plt.title("Example data")
 plt.imshow(torchvision.utils.make_grid(x).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
 plt.show()
+
+# %%
+from tqdm import trange
+
+def TrainModel(model, total_epoch, start_epoch=0):
+
+    epoch_iter = trange(start_epoch, total_epoch)
+    epoch_loss = []
+
+    for epoch in epoch_iter:
+        
+        iter_loss = np.zeros(0)
+
+        for i in range(len(train_loader)):
+            # Get Data
+            x,t = next(train_iterator)
+            x,t = x.to(device), t.to(device)
+
+            # Step Model
+            loss = model.trainingStep(x, t)
+            model.backpropagate(loss)
+            
+            # Collect Stats
+            iter_loss = np.append(iter_loss, loss.item())
+
+        
+        #avg_loss = iter_loss.mean()
+        epoch_loss.append(iter_loss[-1])
+
+        # Print Status
+        epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+
+    return epoch_loss
+
+
+# %%
+def PlotLoss(loss_array):
+    plt.plot(loss_array)
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.show()
+
 
 
 # %% [markdown] id="Qnjh12UbNFpV"
@@ -147,15 +191,25 @@ class Autoencoder(nn.Module):
             nn.Sigmoid()
         )
 
-A = Autoencoder().to(device)
-print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(A.parameters()))}')
-optimiser = torch.optim.Adam(A.parameters(), lr=0.001)
-epoch = 0
+        self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
+    
+    def backpropagate(self, loss):
+        self.optimiser.zero_grad()
+        loss.backward()
+        self.optimiser.step()
+
+    def trainingStep(self, x, t):
+        # do the forward pass with mean squared error
+        z = self.encode(x)
+        x_hat = self.decode(z)
+        loss = ((x-x_hat)**2).mean()
+        return loss
+
+
+print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(Autoencoder().parameters()))}')
+
 
 # %% tags=[]
-import torchvision.models as models
-resnet18 = models.resnet18()
-
 class View(nn.Module):
     def __init__(self, shape):
         super(View, self).__init__()
@@ -255,7 +309,7 @@ class VAE(nn.Module):
 
     def backpropagate(self, loss):
         self.optimiser.zero_grad()
-        elbo_loss.backward()
+        loss.backward()
         self.optimiser.step()
 
     def trainingStep(self, x, t):
@@ -284,13 +338,13 @@ class VAE(nn.Module):
 
         return elbo_loss
 
-V = VAE().to(device)
-#print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(V.parameters()))}')
 
+print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
+'''
 from tqdm import trange
 
 start_epoch = 0
-total_epoch = 100
+total_epoch = 1
 
 epoch_iter = trange(start_epoch, total_epoch)
 for epoch in epoch_iter:
@@ -313,7 +367,13 @@ for epoch in epoch_iter:
     
     # print loss
     epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+'''
 
+
+# %%
+V = VAE().to(device)
+elo_loss = TrainModel(V, 5)
+PlotLoss(elo_loss)
 
 # %%
 # sample your model (autoencoders are not good at this)
@@ -327,52 +387,13 @@ plt.grid(False)
 plt.imshow(torchvision.utils.make_grid(g).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
 plt.show()
 
-
-# %%
-def PlotLoss(loss_array):
-    plt.plot(loss_array)
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.show()
-
-
-
-# %%
-PlotLoss([1,6,2,3])
-
-# %%
-from tqdm import trange
-
-def TrainModel(model, epocs):
-
-    start_epoch = 0
-    total_epoch = 100
-
-    epoch_iter = trange(start_epoch, total_epoch)
-    for epoch in epoch_iter:
-        
-        # array(s) for the performance measures
-        loss_arr = np.zeros(0)
-
-        # iterate over some of the train dateset
-        for i in range(100):
-
-            # sample x from the dataset
-            x,t = next(train_iterator)
-            x,t = x.to(device), t.to(device)
-
-            loss = V.trainingStep(x, t)
-
-            # collect stats
-            loss_arr = np.append(loss_arr, loss.item())
-
-        
-        # print loss
-        epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
-
-
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Main training loop**
+
+# %%
+A = Autoencoder().to(device)
+elo_loss = TrainModel(A, 100)
+PlotLoss(elo_loss)
 
 # %% colab={"base_uri": "https://localhost:8080/", "height": 1000} id="kb5909Y8D_zx" outputId="eab10264-19a5-43a5-885b-e2580535af74"
 from tqdm import trange
