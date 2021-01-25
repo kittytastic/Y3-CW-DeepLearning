@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 # hyperparameters
 batch_size  = 256
 n_channels  = 3
-latent_size = 32
+latent_size = 512
 dataset = 'cifar10'
 
 # %%
@@ -152,8 +152,10 @@ print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vec
 optimiser = torch.optim.Adam(A.parameters(), lr=0.001)
 epoch = 0
 
-
 # %% tags=[]
+import torchvision.models as models
+resnet18 = models.resnet18()
+
 class View(nn.Module):
     def __init__(self, shape):
         super(View, self).__init__()
@@ -251,6 +253,11 @@ class VAE(nn.Module):
         log_pxz = dist.log_prob(x)
         return log_pxz.sum(dim=(1, 2, 3))
 
+    def backpropagate(self, loss):
+        self.optimiser.zero_grad()
+        elbo_loss.backward()
+        self.optimiser.step()
+
     def trainingStep(self, x, t):
 
         # encode x to get the mu and variance parameters
@@ -275,21 +282,13 @@ class VAE(nn.Module):
         elbo_loss = (kl - recon_loss)
         elbo_loss = elbo_loss.mean()
 
-        # backpropagate to compute the gradient of the loss w.r.t the parameters and optimise
-        optimiser.zero_grad()
-        elbo_loss.backward()
-        optimiser.step()
-
-
         return elbo_loss
 
 V = VAE().to(device)
-print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(V.parameters()))}')
-epoch = 0
+#print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(V.parameters()))}')
 
 from tqdm import trange
 
-# training loop, you will want to train for more than 10 here!
 start_epoch = 0
 total_epoch = 100
 
@@ -327,6 +326,50 @@ plt.rcParams['figure.dpi'] = 175
 plt.grid(False)
 plt.imshow(torchvision.utils.make_grid(g).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
 plt.show()
+
+
+# %%
+def PlotLoss(loss_array):
+    plt.plot(loss_array)
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.show()
+
+
+
+# %%
+PlotLoss([1,6,2,3])
+
+# %%
+from tqdm import trange
+
+def TrainModel(model, epocs):
+
+    start_epoch = 0
+    total_epoch = 100
+
+    epoch_iter = trange(start_epoch, total_epoch)
+    for epoch in epoch_iter:
+        
+        # array(s) for the performance measures
+        loss_arr = np.zeros(0)
+
+        # iterate over some of the train dateset
+        for i in range(100):
+
+            # sample x from the dataset
+            x,t = next(train_iterator)
+            x,t = x.to(device), t.to(device)
+
+            loss = V.trainingStep(x, t)
+
+            # collect stats
+            loss_arr = np.append(loss_arr, loss.item())
+
+        
+        # print loss
+        epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+
 
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Main training loop**
