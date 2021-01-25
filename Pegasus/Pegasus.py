@@ -151,6 +151,46 @@ def PlotModelRandomSamle(model):
     plt.show()
 
 
+# %%
+# Plot Latent Space
+import umap
+import pandas as pd
+import umap.plot
+
+def PlotLatentSpace(model, point_count=1000):
+    plot_count = 1000
+
+    acc_labels = None
+    acc_vals = None
+
+    for i in range(plot_count//batch_size):
+        # sample x from the dataset
+        x,l = next(train_iterator)
+        x,t = x.to(device), l.to(device)
+
+        z = model.full_encode(x).cpu()
+
+        latent_space = z.detach().numpy()
+        labels = np.array(l)
+        
+        latent_space = np.squeeze(latent_space)
+
+        if not acc_labels is None:
+            acc_labels = np.concatenate((acc_labels, labels), axis=0)
+            acc_vals = np.concatenate((acc_vals, latent_space))
+        else:
+            acc_labels = labels
+            acc_vals = latent_space
+
+
+    df = pd.DataFrame(data=acc_vals)
+
+    mapper = umap.UMAP(n_neighbors=15).fit(df)
+    df['labels'] = acc_labels
+    df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
+    umap.plot.points(mapper, labels=df["labels"])
+
+
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define a simple convolutional autoencoder**
 
@@ -206,6 +246,9 @@ class Autoencoder(nn.Module):
         k = torch.rand(batch_size, latent_size, 1, 1)
         k = k.to(device)
         return self.decode(k)
+
+    def full_encode(self, x):
+        return self.encode(x)
 
 
     def backpropagate(self, loss):
@@ -332,6 +375,16 @@ class VAE(nn.Module):
         loss.backward()
         self.optimiser.step()
 
+    def full_encode(self, x):
+        x_encoded = self.encode(x)
+        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+
+        # sample z from q
+        std = torch.exp(log_var / 2)
+        q = torch.distributions.Normal(mu, std)
+        z = q.rsample()
+        return z
+
     def trainingStep(self, x, t):
 
         # encode x to get the mu and variance parameters
@@ -367,11 +420,14 @@ print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE(
 
 # %%
 V = VAE().to(device)
-elo_loss = TrainModel(V, 5)
+elo_loss = TrainModel(V, 1)
 PlotLoss(elo_loss)
 
 # %%
 PlotModelRandomSamle(V)
+
+# %%
+PlotLatentSpace(V)
 
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Auto Encoder**
@@ -385,44 +441,7 @@ PlotLoss(elo_loss)
 PlotModelRandomSamle(A)
 
 # %%
-# Plot Latent Space
-import umap
-import pandas as pd
-import umap.plot
-
-plot_count = 1000
-
-acc_labels = None
-acc_vals = None
-
-for i in range(plot_count//batch_size):
-    # sample x from the dataset
-    x,l = next(train_iterator)
-    x,t = x.to(device), l.to(device)
-
-    z = A.encode(x).cpu()
-
-    latent_space = z.detach().numpy()
-    labels = np.array(l)
-    
-    latent_space = np.squeeze(latent_space)
-
-    if not acc_labels is None:
-        acc_labels = np.concatenate((acc_labels, labels), axis=0)
-        acc_vals = np.concatenate((acc_vals, latent_space))
-    else:
-        acc_labels = labels
-        acc_vals = latent_space
-
-
-df = pd.DataFrame(data=acc_vals)
-
-mapper = umap.UMAP(n_neighbors=15).fit(df)
-df['labels'] = acc_labels
-df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
-umap.plot.points(mapper, labels=df["labels"])
-
-
+PlotLatentSpace(A)
 
 # %% id="HjHPwDAe-YoI"
 # optional example code to save your training progress for resuming later if you authenticated Google Drive previously
