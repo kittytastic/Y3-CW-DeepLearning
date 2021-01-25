@@ -143,7 +143,7 @@ def PlotLoss(loss_array):
 
 
 # %%
-def PlotModelRandomSamle(model):
+def PlotModelRandomSample(model):
     rand_latent = model.getRandomSample()
     plt.rcParams['figure.dpi'] = 175
     plt.grid(False)
@@ -424,7 +424,7 @@ elo_loss = TrainModel(V, 1)
 PlotLoss(elo_loss)
 
 # %%
-PlotModelRandomSamle(V)
+PlotModelRandomSample(V)
 
 # %%
 PlotLatentSpace(V)
@@ -438,7 +438,7 @@ elo_loss = TrainModel(A, 5)
 PlotLoss(elo_loss)
 
 # %%
-PlotModelRandomSamle(A)
+PlotModelRandomSample(A)
 
 # %%
 PlotLatentSpace(A)
