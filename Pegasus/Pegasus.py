@@ -162,7 +162,7 @@ class View(nn.Module):
     def forward(self, x):
         return x.view(*self.shape)
 
-class VAE(nn.Module):
+class CondenseEncoder(nn.Module):
     def __init__(self, f=16):
         super().__init__()
 
@@ -180,6 +180,13 @@ class VAE(nn.Module):
             Block(f*4,latent_size),
             nn.Flatten()
         )
+    
+    def forward(self, x):
+        return self.encode(x)
+
+class CondenseDecoder(nn.Module):
+    def __init__(self, f=16):
+        super().__init__()
 
         self.decode = nn.Sequential(
             View((batch_size, latent_size, 1, 1)),
@@ -195,6 +202,17 @@ class VAE(nn.Module):
             nn.Conv2d(f,n_channels, 3,1,1),
             nn.Sigmoid()
         )
+    
+    def forward(self, x):
+        return self.decode(x)
+
+
+class VAE(nn.Module):
+    def __init__(self, f=16):
+        super().__init__()
+
+        self.encode = CondenseEncoder()
+        self.decode = CondenseDecoder()
 
         # distribution parameters
         self.fc_mu = nn.Linear(latent_size, latent_size)
@@ -235,12 +253,8 @@ class VAE(nn.Module):
 
     def trainingStep(self, x, t):
 
-        #print()
-        #print(x.shape)
         # encode x to get the mu and variance parameters
         x_encoded = self.encode(x)
-        #print(x_encoded.shape)
-        #print(self.fc_mu)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
 
         # sample z from q
@@ -277,7 +291,7 @@ from tqdm import trange
 
 # training loop, you will want to train for more than 10 here!
 start_epoch = 0
-total_epoch = 3
+total_epoch = 100
 
 epoch_iter = trange(start_epoch, total_epoch)
 for epoch in epoch_iter:
@@ -299,8 +313,20 @@ for epoch in epoch_iter:
 
     
     # print loss
-    #epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+    epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
 
+
+# %%
+# sample your model (autoencoders are not good at this)
+k = torch.rand(batch_size, latent_size)
+k = k.to(device)
+g = V.decode(k)
+
+# now show your best batch of data for the submission, right click and save the image for your report
+plt.rcParams['figure.dpi'] = 175
+plt.grid(False)
+plt.imshow(torchvision.utils.make_grid(g).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+plt.show()
 
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Main training loop**
