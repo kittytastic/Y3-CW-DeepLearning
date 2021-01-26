@@ -119,11 +119,16 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
 
     epoch_iter = trange(start_epoch, total_epoch)
     epoch_loss = []
+    t_kl = []
+    t_recon = []
 
     for epoch in epoch_iter:
         
         iter_loss = np.zeros(0)
         loss_item = None
+        kl_item = None
+        recon_item = None
+        
 
         for i in range(iter_count):
             # Get Data
@@ -131,30 +136,46 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             x,t = x.to(device), t.to(device)
 
             # Step Model
-            loss = model.trainingStep(x, t)
+            loss, kl_loss, recon_loss = model.trainingStep(x, t)
             model.backpropagate(loss)
             
             # Collect Stats
             loss_item = loss.detach().item()
+            print(kl_loss.shape())
+            kl_item = kl_loss.detach().item()
+            recon_item = recon_loss.detach().item()
+
             iter_loss = np.append(iter_loss, loss_item)
 
         
-        #avg_loss = iter_loss.mean()
+        
         epoch_loss.append(iter_loss[-1])
+        #t_kl.append(kl_item)
+        #t_recon.append(recon_item)
 
         # Print Status
         epoch_iter.set_description("Current Loss %.5f    Epoch" % loss_item)
 
-    return epoch_loss
+    return epoch_loss, t_kl, t_recon
 
 
 # %%
-def PlotLoss(loss_array):
+def PlotLoss(loss_array, loss_type="Loss"):
     plt.plot(loss_array)
-    plt.ylabel('Loss')
+    plt.ylabel(loss_type)
     plt.xlabel('Epoch')
     plt.show()
 
+
+
+# %%
+def PlotAllLoss(losses, loss_names):
+    fig, axs = plt.subplots(len(losses), sharex=True, gridspec_kw={'hspace': 0})
+    for i in range(len(losses)):
+        axs[i].plot(losses[i])
+        axs[i].set_ylabel(loss_names[i])
+    plt.xlabel('Epoch')
+    plt.show()
 
 
 # %%
@@ -381,7 +402,7 @@ class VAE(nn.Module):
         elbo_loss = (kl - recon_loss)
         elbo_loss = elbo_loss.mean()
 
-        return elbo_loss
+        return (elbo_loss, kl, recon_loss)
 
 
 #print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
@@ -394,7 +415,8 @@ class VAE(nn.Module):
 vae_b_enc = CondenseEncoder()
 vae_b_dec = CondenseDecoder()
 V = VAE(vae_b_enc, vae_b_dec).to(device)
-elo_loss = TrainModel(V, 1)
+elo_loss, kl_loss, recon_loss = TrainModel(V, 2)
+PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
 # %%
