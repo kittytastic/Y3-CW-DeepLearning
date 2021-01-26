@@ -212,81 +212,8 @@ def PlotLatentSpace(model, point_count=1000):
     df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
     umap.plot.points(mapper, labels=df["labels"])
 
-
 # %% [markdown] id="Qnjh12UbNFpV"
-# **Define a simple convolutional autoencoder**
-
-# %% colab={"base_uri": "https://localhost:8080/", "height": 35} id="RGbLY6X-NH4O" outputId="e2f24af2-f398-42fc-b173-9f710147718e"
-# simple block of convolution, batchnorm, and leakyrelu
-class Block(nn.Module):
-    def __init__(self, in_f, out_f):
-        super(Block, self).__init__()
-        self.f = nn.Sequential(
-            nn.Conv2d(in_f, out_f, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(out_f),
-            nn.LeakyReLU(inplace=True)
-        )
-    def forward(self,x):
-        return self.f(x)
-
-# define the model
-class Autoencoder(nn.Module):
-    def __init__(self, f=16):
-        super().__init__()
-
-        self.encode = nn.Sequential(
-            Block(n_channels, f),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 16x16 (if cifar10, 48x48 if stl10)
-            Block(f  ,f*2),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 8x8
-            Block(f*2,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 4x4
-            Block(f*4,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 2x2
-            Block(f*4,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 1x1
-            Block(f*4,latent_size),
-        )
-
-        self.decode = nn.Sequential(
-            nn.Upsample(scale_factor=2), # output = 2x2
-            Block(latent_size,f*4),
-            nn.Upsample(scale_factor=2), # output = 4x4
-            Block(f*4,f*4),
-            nn.Upsample(scale_factor=2), # output = 8x8
-            Block(f*4,f*2),
-            nn.Upsample(scale_factor=2), # output = 16x16
-            Block(f*2,f  ),
-            nn.Upsample(scale_factor=2), # output = 32x32
-            nn.Conv2d(f,n_channels, 3,1,1),
-            nn.Sigmoid()
-        )
-
-        self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
-    
-    def getRandomSample(self):
-        k = torch.rand(batch_size, latent_size, 1, 1)
-        k = k.to(device)
-        return self.decode(k)
-
-    def full_encode(self, x):
-        return self.encode(x)
-
-
-    def backpropagate(self, loss):
-        self.optimiser.zero_grad()
-        loss.backward()
-        self.optimiser.step()
-
-    def trainingStep(self, x, t):
-        # MSE
-        z = self.encode(x)
-        x_hat = self.decode(z)
-        loss = ((x-x_hat)**2).mean()
-        return loss
-
-
-print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(Autoencoder().parameters()))}')
+# **Define resnet VAE**
 
 # %% tags=[]
 from ResNet import resnet18_encoder, resnet18_decoder
@@ -298,6 +225,18 @@ class View(nn.Module):
 
     def forward(self, x):
         return x.view(*self.shape)
+
+# simple block of convolution, batchnorm, and leakyrelu
+class Block(nn.Module):
+    def __init__(self, in_f, out_f):
+        super(Block, self).__init__()
+        self.f = nn.Sequential(
+            nn.Conv2d(in_f, out_f, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(out_f),
+            nn.LeakyReLU(inplace=True)
+        )
+    def forward(self,x):
+        return self.f(x)
 
 class CondenseEncoder(nn.Module):
     def __init__(self, f=16):
@@ -464,6 +403,9 @@ PlotModelRandomSample(V)
 PlotLatentSpace(V)
 
 # %%
+CheckpointModel(Vres, 'Vbasic-4hr', 960)
+
+# %%
 vae_res_enc = resnet18_encoder(False, False)
 vae_res_dec = resnet18_decoder(
     latent_dim=latent_size,
@@ -503,28 +445,3 @@ PlotSmallRandomSample(V2)
 epoch = RestoreModel(V2, 'Vres18-4hr')
 print(epoch)
 PlotSmallRandomSample(V2)
-
-# %% [markdown] id="N1UBl0PJjY-f"
-# **Auto Encoder**
-
-# %% tags=[]
-A = Autoencoder().to(device)
-elo_loss = TrainModel(A, 600)
-PlotLoss(elo_loss)
-
-# %%
-PlotModelRandomSample(A)
-
-# %%
-PlotLatentSpace(A)
-
-# %% id="HjHPwDAe-YoI"
-# optional example code to save your training progress for resuming later if you authenticated Google Drive previously
-#torch.save({'A':A.state_dict(), 'optimiser':optimiser.state_dict(), 'epoch':epoch}, './checkpoint.chkpt')
-
-# %% id="nrCN7YQ5-2J8"
-# optional example to resume training if you authenticated Google Drive previously
-#params = torch.load('./checkpoint.chkpt')
-#A.load_state_dict(params['A'])
-#optimiser.load_state_dict(params['optimiser'])
-#epoch = params['epoch']
