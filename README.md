@@ -9,3 +9,8 @@ conda install jupyterlab ipykernel numpy scipy pytorch cudatoolkit=11.0 matplotl
 https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
 https://syncedreview.com/2019/06/06/going-beyond-gan-new-deepmind-vae-model-generates-high-fidelity-human-faces/
 https://towardsdatascience.com/variational-autoencoder-demystified-with-pytorch-implementation-3a06bee395ed
+
+https://towardsdatascience.com/introduction-to-resnets-c0a830a288a4
+https://arxiv.org/pdf/1512.03385.pdf
+https://www.youtube.com/watch?v=DkNIBBBvcPs&feature=emb_rel_pause
+https://github.com/aladdinpersson/Machine-Learning-Collection
