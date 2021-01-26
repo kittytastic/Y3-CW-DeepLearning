@@ -141,22 +141,21 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             
             # Collect Stats
             loss_item = loss.detach().item()
-            print(kl_loss.shape())
-            kl_item = kl_loss.detach().item()
-            recon_item = recon_loss.detach().item()
+            kl_item = kl_loss.detach().mean().cpu()
+            recon_item = recon_loss.detach().mean().cpu()
 
             iter_loss = np.append(iter_loss, loss_item)
 
         
         
         epoch_loss.append(iter_loss[-1])
-        #t_kl.append(kl_item)
-        #t_recon.append(recon_item)
+        t_kl.append(kl_item)
+        t_recon.append(recon_item)
 
         # Print Status
         epoch_iter.set_description("Current Loss %.5f    Epoch" % loss_item)
 
-    return epoch_loss, t_kl, t_recon
+    return (epoch_loss, t_kl, t_recon)
 
 
 # %%
@@ -240,71 +239,6 @@ def PlotLatentSpace(model, point_count=1000):
 
 # %% tags=[]
 from ResNet import resnet18_encoder, resnet18_decoder
-
-class View(nn.Module):
-    def __init__(self, shape):
-        super(View, self).__init__()
-        self.shape = shape
-
-    def forward(self, x):
-        return x.view(*self.shape)
-
-# simple block of convolution, batchnorm, and leakyrelu
-class Block(nn.Module):
-    def __init__(self, in_f, out_f):
-        super(Block, self).__init__()
-        self.f = nn.Sequential(
-            nn.Conv2d(in_f, out_f, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(out_f),
-            nn.LeakyReLU(inplace=True)
-        )
-    def forward(self,x):
-        return self.f(x)
-
-class CondenseEncoder(nn.Module):
-    def __init__(self, f=16):
-        super().__init__()
-
-        self.encode = nn.Sequential(
-            Block(n_channels, f),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 16x16 (if cifar10, 48x48 if stl10)
-            Block(f  ,f*2),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 8x8
-            Block(f*2,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 4x4
-            Block(f*4,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 2x2
-            Block(f*4,f*4),
-            nn.MaxPool2d(kernel_size=(2,2)), # output = 1x1
-            Block(f*4,latent_size),
-            nn.Flatten()
-        )
-    
-    def forward(self, x):
-        return self.encode(x)
-
-class CondenseDecoder(nn.Module):
-    def __init__(self, f=16):
-        super().__init__()
-
-        self.decode = nn.Sequential(
-            View((batch_size, latent_size, 1, 1)),
-            nn.Upsample(scale_factor=2), # output = 2x2
-            Block(latent_size,f*4),
-            nn.Upsample(scale_factor=2), # output = 4x4
-            Block(f*4,f*4),
-            nn.Upsample(scale_factor=2), # output = 8x8
-            Block(f*4,f*2),
-            nn.Upsample(scale_factor=2), # output = 16x16
-            Block(f*2,f  ),
-            nn.Upsample(scale_factor=2), # output = 32x32
-            nn.Conv2d(f,n_channels, 3,1,1),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x):
-        return self.decode(x)
-
 
 class VAE(nn.Module):
     def __init__(self, encoder, decoder,  f=16):
@@ -412,8 +346,9 @@ class VAE(nn.Module):
 # ** Basic VAE **
 
 # %%
-vae_b_enc = CondenseEncoder()
-vae_b_dec = CondenseDecoder()
+from OldModels import CondenseEncoder, CondenseDecoder
+vae_b_enc = CondenseEncoder(latent_size=latent_size)
+vae_b_dec = CondenseDecoder(latent_size=latent_size, batch_size=batch_size)
 V = VAE(vae_b_enc, vae_b_dec).to(device)
 elo_loss, kl_loss, recon_loss = TrainModel(V, 2)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
@@ -437,7 +372,8 @@ vae_res_dec = resnet18_decoder(
     maxpool1=False
 )
 Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-elo_loss = TrainModel(Vres, 1)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
+PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
 # %%
