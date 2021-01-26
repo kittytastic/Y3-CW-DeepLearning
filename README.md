@@ -14,3 +14,8 @@ https://towardsdatascience.com/introduction-to-resnets-c0a830a288a4
 https://arxiv.org/pdf/1512.03385.pdf
 https://www.youtube.com/watch?v=DkNIBBBvcPs&feature=emb_rel_pause
 https://github.com/aladdinpersson/Machine-Learning-Collection
+
+
+https://orybkin.github.io/sigma-vae/
+https://ermongroup.github.io/blog/a-tutorial-on-mmd-variational-autoencoders/#kingma2013auto
+https://www.microsoft.com/en-us/research/blog/less-pain-more-gain-a-simple-method-for-vae-training-with-less-of-that-kl-vanishing-agony/
