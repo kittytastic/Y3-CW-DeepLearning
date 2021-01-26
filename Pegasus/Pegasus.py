@@ -123,6 +123,7 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
     for epoch in epoch_iter:
         
         iter_loss = np.zeros(0)
+        loss_item = None
 
         for i in range(iter_count):
             # Get Data
@@ -134,14 +135,15 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             model.backpropagate(loss)
             
             # Collect Stats
-            iter_loss = np.append(iter_loss, loss.item())
+            loss_item = loss.detach().item()
+            iter_loss = np.append(iter_loss, loss_item)
 
         
         #avg_loss = iter_loss.mean()
         epoch_loss.append(iter_loss[-1])
 
         # Print Status
-        epoch_iter.set_description("Current Loss %.5f    Epoch" % loss.item())
+        epoch_iter.set_description("Current Loss %.5f    Epoch" % loss_item)
 
     return epoch_loss
 
@@ -393,17 +395,17 @@ class VAE(nn.Module):
 vae_b_enc = CondenseEncoder()
 vae_b_dec = CondenseDecoder()
 V = VAE(vae_b_enc, vae_b_dec).to(device)
-elo_loss = TrainModel(V, 960)
+elo_loss = TrainModel(V, 1)
 PlotLoss(elo_loss)
 
 # %%
 PlotModelRandomSample(V)
 
 # %%
-PlotLatentSpace(V)
+PlotSmallRandomSample(V)
 
 # %%
-CheckpointModel(Vres, 'Vbasic-4hr', 960)
+PlotLatentSpace(V)
 
 # %%
 vae_res_enc = resnet18_encoder(False, False)
@@ -414,7 +416,7 @@ vae_res_dec = resnet18_decoder(
     maxpool1=False
 )
 Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-elo_loss = TrainModel(Vres, 240)
+elo_loss = TrainModel(Vres, 1)
 PlotLoss(elo_loss)
 
 # %%
@@ -425,23 +427,3 @@ PlotSmallRandomSample(Vres)
 
 # %%
 PlotLatentSpace(Vres)
-
-# %%
-CheckpointModel(Vres, 'Vres18-4hr', 240)
-
-# %%
-V2=None
-vae_res_enc2 = resnet18_encoder(False, False)
-vae_res_dec2 = resnet18_decoder(
-    latent_dim=latent_size,
-    input_height=32,
-    first_conv=False,
-    maxpool1=False
-)
-V2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
-PlotSmallRandomSample(V2)
-
-# %%
-epoch = RestoreModel(V2, 'Vres18-4hr')
-print(epoch)
-PlotSmallRandomSample(V2)
