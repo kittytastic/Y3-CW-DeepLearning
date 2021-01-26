@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 # hyperparameters
 batch_size  = 256
 n_channels  = 3
-latent_size = 512
+latent_size = 2
 dataset = 'cifar10'
 
 # %%
@@ -289,26 +289,23 @@ class VAE(nn.Module):
     def __init__(self, encoder, decoder,  f=16):
         super().__init__()
 
-        #self.encode = CondenseEncoder()
-        #self.decode = CondenseDecoder()
-        # encoder, decoder
-        #self.encode = resnet18_encoder(False, False)
-        #self.decode = resnet18_decoder(
-        #    latent_dim=latent_size,
-        #    input_height=32,
-        #    first_conv=False,
-        #    maxpool1=False
-        #)
-
         self.encode = encoder
         self.decode = decoder
 
+        # output size depends on input size for some encoders
+        demo_input = torch.ones([batch_size, 3, 32, 32])
+        h_dim = self.encode(demo_input).shape[1]
+
+
         # distribution parameters
-        self.fc_mu = nn.Linear(latent_size, latent_size)
-        self.fc_var = nn.Linear(latent_size, latent_size)
+        self.fc_mu = nn.Linear(h_dim, latent_size)
+        self.fc_var = nn.Linear(h_dim, latent_size)
 
         # for the gaussian likelihood
         self.log_scale = nn.Parameter(torch.Tensor([0.0]))
+
+        # to map z back to deecoder input
+        self.z_rescale = nn.Linear(latent_size, h_dim)
 
         self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
 
@@ -332,9 +329,9 @@ class VAE(nn.Module):
         return kl
 
     def getRandomSample(self):
-        k = torch.rand(batch_size, latent_size)
-        k = k.to(device)
-        return self.decode(k)
+        z = torch.rand(batch_size, latent_size)
+        z = z.to(device)
+        return self.decode(z)
 
     def gaussian_likelihood(self, x_hat, logscale, x):
         scale = torch.exp(logscale)
@@ -370,8 +367,10 @@ class VAE(nn.Module):
         std = torch.exp(log_var / 2)
         q = torch.distributions.Normal(mu, std)
         z = q.rsample()
+        
         # decoded
         x_hat = self.decode(z)
+        
         # reconstruction loss
         recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
 
