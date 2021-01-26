@@ -240,6 +240,12 @@ def PlotLatentSpace(model, point_count=1000):
 # %% tags=[]
 from ResNet import resnet18_encoder, resnet18_decoder
 
+def softclip(tensor, min):
+    """ Clips the tensor values at the minimum value min in a softway. Taken from Handful of Trials """
+    result_tensor = min + F.softplus(tensor - min)
+
+    return result_tensor
+
 class VAE(nn.Module):
     def __init__(self, encoder, decoder,  f=16):
         super().__init__()
@@ -257,12 +263,13 @@ class VAE(nn.Module):
         self.fc_var = nn.Linear(h_dim, latent_size)
 
         # for the gaussian likelihood
-        self.log_scale = nn.Parameter(torch.Tensor([0.0]))
+        self.log_sigma = nn.Parameter(torch.Tensor([0.0]))
 
         # to map z back to deecoder input
         self.z_rescale = nn.Linear(latent_size, h_dim)
 
         self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
+
 
     def kl_divergence(self, z, mu, std):
         # --------------------------
@@ -288,10 +295,10 @@ class VAE(nn.Module):
         z = z.to(device)
         return self.decode(z)
 
-    def gaussian_likelihood(self, x_hat, logscale, x):
-        scale = torch.exp(logscale)
+    def gaussian_likelihood(self, x_hat, log_sigma, x):
+        sigma = torch.exp(log_sigma)
         mean = x_hat
-        dist = torch.distributions.Normal(mean, scale)
+        dist = torch.distributions.Normal(mean, sigma)
 
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
@@ -325,9 +332,13 @@ class VAE(nn.Module):
         
         # decoded
         x_hat = self.decode(z)
+
+        # Learning the variance can become unstable in some cases. Softly limiting log_sigma to a minimum of -6
+        # ensures stable training.
+        log_sigma = softclip(self.log_sigma, -6)
         
         # reconstruction loss
-        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
+        recon_loss = self.gaussian_likelihood(x_hat, log_sigma, x)
 
         # kl
         kl = self.kl_divergence(z, mu, std)
