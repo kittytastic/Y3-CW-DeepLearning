@@ -99,10 +99,23 @@ plt.title("Example data")
 plt.imshow(torchvision.utils.make_grid(x).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
 plt.show()
 
+
+# %%
+def CheckpointModel(model, checkpoint_name, epoch):
+    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'epoch':epoch}, '%s.chkpt'%checkpoint_name)
+
+def RestoreModel(model, checkpoint_name):
+    params = torch.load('%s.chkpt'%checkpoint_name)
+    model.load_state_dict(params['model'])
+    model.optimiser.load_state_dict(params['optimiser'])
+    epoch = params['epoch']
+    return epoch
+
+
 # %%
 from tqdm import trange
 
-def TrainModel(model, total_epoch, start_epoch=0):
+def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
 
     epoch_iter = trange(start_epoch, total_epoch)
     epoch_loss = []
@@ -111,7 +124,7 @@ def TrainModel(model, total_epoch, start_epoch=0):
         
         iter_loss = np.zeros(0)
 
-        for i in range(len(train_loader)):
+        for i in range(iter_count):
             # Get Data
             x,t = next(train_iterator)
             x,t = x.to(device), t.to(device)
@@ -148,6 +161,15 @@ def PlotModelRandomSample(model):
     plt.rcParams['figure.dpi'] = 175
     plt.grid(False)
     plt.imshow(torchvision.utils.make_grid(rand_latent).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
+
+
+# %%
+def PlotSmallRandomSample(model, count=8):
+    rand_latent = model.getRandomSample()
+    plt.rcParams['figure.dpi'] = 175
+    plt.grid(False)
+    plt.imshow(torchvision.utils.make_grid(rand_latent[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
     plt.show()
 
 
@@ -266,8 +288,9 @@ class Autoencoder(nn.Module):
 
 print(f'> Number of autoencoder parameters {len(torch.nn.utils.parameters_to_vector(Autoencoder().parameters()))}')
 
-
 # %% tags=[]
+from ResNet import resnet18_encoder, resnet18_decoder
+
 class View(nn.Module):
     def __init__(self, shape):
         super(View, self).__init__()
@@ -322,11 +345,22 @@ class CondenseDecoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, f=16):
+    def __init__(self, encoder, decoder,  f=16):
         super().__init__()
 
-        self.encode = CondenseEncoder()
-        self.decode = CondenseDecoder()
+        #self.encode = CondenseEncoder()
+        #self.decode = CondenseDecoder()
+        # encoder, decoder
+        #self.encode = resnet18_encoder(False, False)
+        #self.decode = resnet18_decoder(
+        #    latent_dim=latent_size,
+        #    input_height=32,
+        #    first_conv=False,
+        #    maxpool1=False
+        #)
+
+        self.encode = encoder
+        self.decode = decoder
 
         # distribution parameters
         self.fc_mu = nn.Linear(latent_size, latent_size)
@@ -395,10 +429,8 @@ class VAE(nn.Module):
         std = torch.exp(log_var / 2)
         q = torch.distributions.Normal(mu, std)
         z = q.rsample()
-
         # decoded
         x_hat = self.decode(z)
-
         # reconstruction loss
         recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
 
@@ -412,15 +444,17 @@ class VAE(nn.Module):
         return elbo_loss
 
 
-print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
+#print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
 
 
 # %% [markdown]
-# ** VAE **
+# ** Basic VAE **
 
 # %%
-V = VAE().to(device)
-elo_loss = TrainModel(V, 1)
+vae_b_enc = CondenseEncoder()
+vae_b_dec = CondenseDecoder()
+V = VAE(vae_b_enc, vae_b_dec).to(device)
+elo_loss = TrainModel(V, 960)
 PlotLoss(elo_loss)
 
 # %%
@@ -429,12 +463,53 @@ PlotModelRandomSample(V)
 # %%
 PlotLatentSpace(V)
 
+# %%
+vae_res_enc = resnet18_encoder(False, False)
+vae_res_dec = resnet18_decoder(
+    latent_dim=latent_size,
+    input_height=32,
+    first_conv=False,
+    maxpool1=False
+)
+Vres = VAE(vae_res_enc, vae_res_dec).to(device)
+elo_loss = TrainModel(Vres, 240)
+PlotLoss(elo_loss)
+
+# %%
+PlotModelRandomSample(Vres)
+
+# %%
+PlotSmallRandomSample(Vres)
+
+# %%
+PlotLatentSpace(Vres)
+
+# %%
+CheckpointModel(Vres, 'Vres18-4hr', 240)
+
+# %%
+V2=None
+vae_res_enc2 = resnet18_encoder(False, False)
+vae_res_dec2 = resnet18_decoder(
+    latent_dim=latent_size,
+    input_height=32,
+    first_conv=False,
+    maxpool1=False
+)
+V2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
+PlotSmallRandomSample(V2)
+
+# %%
+epoch = RestoreModel(V2, 'Vres18-4hr')
+print(epoch)
+PlotSmallRandomSample(V2)
+
 # %% [markdown] id="N1UBl0PJjY-f"
 # **Auto Encoder**
 
 # %% tags=[]
 A = Autoencoder().to(device)
-elo_loss = TrainModel(A, 5)
+elo_loss = TrainModel(A, 600)
 PlotLoss(elo_loss)
 
 # %%
