@@ -2,3 +2,4 @@
 **/Dataset/**
 *.ipynb
 *.chkpt
+**/__pycache__/**
