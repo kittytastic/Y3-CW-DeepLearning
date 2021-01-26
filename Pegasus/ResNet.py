@@ -300,6 +300,8 @@ class ResNetDecoder(nn.Module):
 
         self.conv1 = nn.Conv2d(64 * block.expansion, 3, kernel_size=3, stride=1, padding=1, bias=False)
 
+        self.renorm = nn.Sigmoid()
+
     def _make_layer(self, block, planes, blocks, scale=1):
         upsample = None
         if scale != 1 or self.inplanes != planes * block.expansion:
@@ -332,6 +334,7 @@ class ResNetDecoder(nn.Module):
         x = self.upscale(x)
 
         x = self.conv1(x)
+        x = self.renorm(x)
         return x
 
 
