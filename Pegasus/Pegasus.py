@@ -245,6 +245,22 @@ def HorseBirdTensors(count=batch_size):
                 bc+=1
     return horses, birds
 
+def GetTensorOfClass(class_name, count=batch_size):
+    if class_name not in class_names:
+        raise Exception("%s is not in classes"%class_name)
+
+    imgClass = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
+    ic = 0
+
+    while ic<count:
+        x,t = next(train_iterator)
+        for i in range(len(t)):
+            cn = class_names[t[i].item()]
+            if cn == class_name and ic<count:
+                imgClass[ic] = x[i]
+                ic+=1
+    return imgClass
+
 def plotTensor(tensor):
     plt.grid(False)
     plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
@@ -345,10 +361,11 @@ def PlotCustomLatentSpace(model, datasets, class_labels):
 # %%
 def InvestigateBirds(model, count=128):
     horses, birds = HorseBirdTensors(count=count)
+    planes = GetTensorOfClass('airplane', count)
 
-    PlotCustomLatentSpace(model, [horses, birds], ['horses', 'birds'])
+    PlotCustomLatentSpace(model, [birds, planes], ['birds', 'planes'])
 
-InvestigateBirds(Vres2, count=1024)
+InvestigateBirds(Vres2, count=2024)
 
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
