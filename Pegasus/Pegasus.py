@@ -226,6 +226,72 @@ def PlotSmallRandomSample(model, count=8):
 
 
 # %%
+def HorseBirdTensors(count=batch_size):
+    hc = 0
+    bc = 0
+
+    horses = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
+    birds = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
+
+    while hc<count or bc<count:
+        x,t = next(train_iterator)
+        for i in range(len(t)):
+            cn = class_names[t[i].item()]
+            if cn == "horse" and hc<count:
+                horses[hc] = x[i]
+                hc+=1
+            if cn == "bird" and bc<count:
+                birds[bc] = x[i]
+                bc+=1
+    return horses, birds
+
+def plotTensor(tensor):
+    plt.grid(False)
+    plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
+
+def SeeHB(model):
+    horses, birds = HorseBirdTensors(count=128)
+
+    plotTensor(horses)
+    plotTensor(birds)
+
+def TryPegasus(model, width=8, rows=8):
+    horses, birds = HorseBirdTensors(count=rows)
+    #plotTensor(horses)
+    #plotTensor(birds)
+
+    print(horses.shape)
+    gpu_horses = horses.to(device)
+    gpu_birds = birds.to(device)
+    z_horses = model.full_encode(gpu_horses)
+    z_birds = model.full_encode(gpu_birds)
+    
+    
+    z_amalgum = torch.zeros(rows*width, latent_size)
+    for i in range(rows):
+        cm = width-1
+        for j in range(width):
+            z_amalgum[i*width+j] = z_horses[i]*j/cm + z_birds[i]*(1-j/cm)
+
+    z_amalgum = z_amalgum.to(device)
+    pegasus_decoded = model.decode(z_amalgum)
+    plotTensor(pegasus_decoded)
+
+    plotTensor(horses)
+    plotTensor(birds)
+    #print(many_pegasus.shape)
+    #many_pegasus = many_pegasus.to(device)
+    #pegasus_decoded = model.decode(many_pegasus)
+    #plt.rcParams['figure.dpi'] = 175
+    #plt.grid(False)
+    #plt.imshow(torchvision.utils.make_grid(pegasus_decoded[0:count]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    #plt.show()
+
+#TryPegasus(Vres2)
+TryPegasus(Vres2)
+
+# %%
 # Plot Latent Space
 import umap
 import pandas as pd
@@ -404,15 +470,15 @@ vae_res_dec = resnet18_decoder(
     maxpool1=False
 )
 Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 3)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
 # %%
-PlotModelRandomSample(Vres)
+PlotModelRandomGeneratedSample(Vres)
 
 # %%
-PlotModelRandomGeneratedSample(Vres)
+PlotSmallRandomSample(Vres)
 
 # %%
 PlotLatentSpace(Vres)
@@ -426,7 +492,10 @@ vae_res_dec2 = resnet18_decoder(
     maxpool1=False
 )
 Vres2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
-RestoreModel(Vres2, 'Vres18-4hr')
+RestoreModel(Vres2, 'Vres-10hr')
 
 # %%
-PlotModelSampleEncoding()
+PlotModelSampleEncoding(Vres2)
+
+# %%
+PlotSmallRandomSample(Vres2)
