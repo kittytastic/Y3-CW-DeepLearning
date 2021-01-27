@@ -279,7 +279,7 @@ def TryPegasus(model, width=8, rows=8):
     plotTensor(birds)
    
 
-TryPegasus(Vres2)
+#TryPegasus(Vres2)
 
 # %%
 # Plot Latent Space
@@ -288,12 +288,11 @@ import pandas as pd
 import umap.plot
 
 def PlotLatentSpace(model, point_count=1000):
-    plot_count = 1000
 
     acc_labels = None
     acc_vals = None
 
-    for i in range(plot_count//batch_size):
+    for i in range(point_count//batch_size):
         # sample x from the dataset
         x,l = next(train_iterator)
         x,t = x.to(device), l.to(device)
@@ -319,6 +318,37 @@ def PlotLatentSpace(model, point_count=1000):
     df['labels'] = acc_labels
     df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
     umap.plot.points(mapper, labels=df["labels"])
+
+def PlotCustomLatentSpace(model, datasets, class_labels):
+    full_df =  pd.DataFrame()
+    data_df = pd.DataFrame()
+    labels_df = pd.DataFrame()
+
+    data = np.empty([0, latent_size])
+    labels = []
+    for i in range(len(datasets)):
+        ds = datasets[i]
+        l = class_labels[i]
+        ds, l = ds.to(device), l
+
+        z = model.full_encode(ds).detach().cpu().numpy()
+        z = np.squeeze(z)
+        data = np.concatenate((data, z), axis=0)
+        labels+=[l]*len(ds)
+    
+    
+    mapper = umap.UMAP(n_neighbors=15).fit(data)
+    labels_df['labels']=labels
+    umap.plot.points(mapper, labels=labels_df['labels'])
+
+
+# %%
+def InvestigateBirds(model, count=128):
+    horses, birds = HorseBirdTensors(count=count)
+
+    PlotCustomLatentSpace(model, [horses, birds], ['horses', 'birds'])
+
+InvestigateBirds(Vres2, count=1024)
 
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
