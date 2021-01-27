@@ -29,7 +29,7 @@ import torchvision
 import matplotlib.pyplot as plt
 
 # hyperparameters
-batch_size  = 128
+batch_size  = 256
 latent_size = 32
 dataset = 'cifar10'
 
@@ -154,7 +154,7 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             x,t = x.to(device), t.to(device)
 
             # Step Model
-            loss, kl_loss, recon_loss = model.trainingStep(x, t)
+            loss, kl_loss, recon_loss, _ = model.trainingStep(x, t)
             model.backpropagate(loss)
             
             # Collect Stats
@@ -184,7 +184,6 @@ def PlotLoss(loss_array, loss_type="Loss"):
     plt.show()
 
 
-
 # %%
 def PlotAllLoss(losses, loss_names):
     fig, axs = plt.subplots(len(losses), sharex=True, gridspec_kw={'hspace': 0})
@@ -205,6 +204,17 @@ def PlotModelRandomGeneratedSample(model):
 
 
 # %%
+def PlotModelSampleEncoding(model):
+    x,t = next(train_iterator)
+    x = x.to(device)
+    _, _, _, x_hat = model.trainingStep(x, t)
+    plt.rcParams['figure.dpi'] = 175
+    plt.grid(False)
+    plt.imshow(torchvision.utils.make_grid(x_hat[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
+    plt.imshow(torchvision.utils.make_grid(x[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
+
 
 # %%
 def PlotSmallRandomSample(model, count=8):
@@ -366,7 +376,7 @@ class VAE(nn.Module):
         elbo_loss = (kl - recon_loss)
         elbo_loss = elbo_loss.mean()
 
-        return (elbo_loss, kl, recon_loss)
+        return (elbo_loss, kl, recon_loss, x_hat)
 
 
 #print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
@@ -406,3 +416,17 @@ PlotModelRandomGeneratedSample(Vres)
 
 # %%
 PlotLatentSpace(Vres)
+
+# %%
+vae_res_enc2 = resnet18_encoder(False, False)
+vae_res_dec2 = resnet18_decoder(
+    latent_dim=latent_size,
+    input_height=image_size,
+    first_conv=False,
+    maxpool1=False
+)
+Vres2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
+RestoreModel(Vres2, 'Vres18-4hr')
+
+# %%
+PlotModelSampleEncoding()
