@@ -29,9 +29,8 @@ import torchvision
 import matplotlib.pyplot as plt
 
 # hyperparameters
-batch_size  = 256
-n_channels  = 3
-latent_size = 2
+batch_size  = 128
+latent_size = 32
 dataset = 'cifar10'
 
 # %%
@@ -58,13 +57,28 @@ else:
     device = torch.device('cpu')
     raise Exception("Not using GPU")
 
-
 # %% id="bK383zeDM4Ac"
+image_size = None
+image_channels = None
 # helper function to make getting another batch of data easier
 def cycle(iterable):
     while True:
         for x in iterable:
             yield x
+
+# you may use cifar10 or stl10 datasets
+if dataset == 'fashion-mnist':
+    train_loader = torch.utils.data.DataLoader(
+        torchvision.datasets.FashionMNIST('./Dataset/fashion-mnist', train=True, download=True, transform=torchvision.transforms.Compose([
+            torchvision.transforms.Lambda(lambda x: x.convert('RGB') ),
+            torchvision.transforms.ToTensor(),
+        ])),
+        shuffle=True, batch_size=batch_size, drop_last=True
+    )
+
+    image_channels = 3
+    image_size = 28
+    class_names = ['top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
 
 # you may use cifar10 or stl10 datasets
 if dataset == 'cifar10':
@@ -74,7 +88,9 @@ if dataset == 'cifar10':
         ])),
         shuffle=True, batch_size=batch_size, drop_last=True
     )
-    #print(len(train_loader))
+
+    image_channels = 3
+    image_size=32
     class_names = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
 # stl10 has larger images which are much slower to train on. You should develop your method with CIFAR-10 before experimenting with STL-10
@@ -84,7 +100,9 @@ if dataset == 'stl10':
             torchvision.transforms.ToTensor(),
         ])),
     shuffle=True, batch_size=batch_size, drop_last=True)
-    train_iterator = iter(cycle(train_loader))
+    
+    image_channels = 3
+    image_size=96
     class_names = ['airplane', 'bird', 'car', 'cat', 'deer', 'dog', 'horse', 'monkey', 'ship', 'truck'] # these are slightly different to CIFAR-10
 
 train_iterator = iter(cycle(train_loader))
@@ -178,13 +196,15 @@ def PlotAllLoss(losses, loss_names):
 
 
 # %%
-def PlotModelRandomSample(model):
+def PlotModelRandomGeneratedSample(model):
     rand_latent = model.getRandomSample()
     plt.rcParams['figure.dpi'] = 175
     plt.grid(False)
     plt.imshow(torchvision.utils.make_grid(rand_latent).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
     plt.show()
 
+
+# %%
 
 # %%
 def PlotSmallRandomSample(model, count=8):
@@ -247,17 +267,16 @@ def softclip(tensor, min):
     return result_tensor
 
 class VAE(nn.Module):
-    def __init__(self, encoder, decoder,  f=16):
+    def __init__(self, encoder, decoder):
         super().__init__()
 
         self.encode = encoder
         self.decode = decoder
 
         # output size depends on input size for some encoders
-        demo_input = torch.ones([batch_size, 3, 32, 32])
+        demo_input = torch.ones([batch_size, image_channels, image_size, image_size])
         h_dim = self.encode(demo_input).shape[1]
-
-
+        
         # distribution parameters
         self.fc_mu = nn.Linear(h_dim, latent_size)
         self.fc_var = nn.Linear(h_dim, latent_size)
@@ -324,7 +343,7 @@ class VAE(nn.Module):
         # encode x to get the mu and variance parameters
         x_encoded = self.encode(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
-
+       
         # sample z from q
         std = torch.exp(log_var / 2)
         q = torch.distributions.Normal(mu, std)
@@ -358,32 +377,24 @@ class VAE(nn.Module):
 
 # %%
 from OldModels import CondenseEncoder, CondenseDecoder
-vae_b_enc = CondenseEncoder(latent_size=latent_size)
-vae_b_dec = CondenseDecoder(latent_size=latent_size, batch_size=batch_size)
+print(image_channels)
+vae_b_enc = CondenseEncoder(latent_size=latent_size, n_channels=image_channels)
+vae_b_dec = CondenseDecoder(latent_size=latent_size, batch_size=batch_size, n_channels=image_channels)
 V = VAE(vae_b_enc, vae_b_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(V, 2)
+elo_loss, kl_loss, recon_loss = TrainModel(V, 0)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
-# %%
-PlotModelRandomSample(V)
-
-# %%
-PlotSmallRandomSample(V)
-
-# %%
-PlotLatentSpace(V)
-
-# %%
+# %% tags=[]
 vae_res_enc = resnet18_encoder(False, False)
 vae_res_dec = resnet18_decoder(
     latent_dim=latent_size,
-    input_height=32,
+    input_height=image_size,
     first_conv=False,
     maxpool1=False
 )
 Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 3)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
@@ -391,7 +402,7 @@ PlotLoss(elo_loss)
 PlotModelRandomSample(Vres)
 
 # %%
-PlotSmallRandomSample(Vres)
+PlotModelRandomGeneratedSample(Vres)
 
 # %%
 PlotLatentSpace(Vres)
