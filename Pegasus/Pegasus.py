@@ -258,10 +258,7 @@ def SeeHB(model):
 
 def TryPegasus(model, width=8, rows=8):
     horses, birds = HorseBirdTensors(count=rows)
-    #plotTensor(horses)
-    #plotTensor(birds)
 
-    print(horses.shape)
     gpu_horses = horses.to(device)
     gpu_birds = birds.to(device)
     z_horses = model.full_encode(gpu_horses)
@@ -280,15 +277,8 @@ def TryPegasus(model, width=8, rows=8):
 
     plotTensor(horses)
     plotTensor(birds)
-    #print(many_pegasus.shape)
-    #many_pegasus = many_pegasus.to(device)
-    #pegasus_decoded = model.decode(many_pegasus)
-    #plt.rcParams['figure.dpi'] = 175
-    #plt.grid(False)
-    #plt.imshow(torchvision.utils.make_grid(pegasus_decoded[0:count]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    #plt.show()
+   
 
-#TryPegasus(Vres2)
 TryPegasus(Vres2)
 
 # %%
