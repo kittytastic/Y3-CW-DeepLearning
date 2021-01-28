@@ -19,32 +19,6 @@ class Interpolate(nn.Module):
         return F.interpolate(x, size=self.size, scale_factor=self.scale_factor)
 
 
-def conv3x3(in_planes, out_planes, stride=1):
-    """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
-
-
-def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
-
-
-def resize_conv3x3(in_planes, out_planes, scale=1):
-    """upsample + 3x3 convolution with padding to avoid checkerboard artifact"""
-    if scale == 1:
-        return conv3x3(in_planes, out_planes)
-    else:
-        return nn.Sequential(Interpolate(scale_factor=scale), conv3x3(in_planes, out_planes))
-
-
-def resize_conv1x1(in_planes, out_planes, scale=1):
-    """upsample + 1x1 convolution with padding to avoid checkerboard artifact"""
-    if scale == 1:
-        return conv1x1(in_planes, out_planes)
-    else:
-        return nn.Sequential(Interpolate(scale_factor=scale), conv1x1(in_planes, out_planes))
-
-
 class EncoderBlock(nn.Module):
     expansion = 1
 
