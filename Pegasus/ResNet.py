@@ -1,6 +1,7 @@
 
 #
 # this code is based on https://github.com/PyTorchLightning/pytorch-lightning-bolts/pl_bolts/models/autoencoders/components.py, which is released under the Apache 2.0 licesne
+# https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 #
 import torch
 from torch import nn
@@ -45,41 +46,40 @@ def resize_conv1x1(in_planes, out_planes, scale=1):
 
 
 class EncoderBlock(nn.Module):
-    """
-    ResNet block, copied from
-    https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py#L35
-    """
-
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, working_planes, stride=1, downsample=None):
         super().__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv1 = nn.Conv2d(in_planes, working_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(working_planes)
+        
+        self.conv2 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(working_planes)
+        
         self.downsample = downsample
+
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
         identity = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
         if self.downsample is not None:
             identity = self.downsample(x)
 
+
+        apply_convs = nn.Sequential(
+            self.conv1,
+            self.bn1,
+            self.relu,
+            self.conv2,
+            self.bn2,
+        )
+
+        out = apply_convs(x)
         out += identity
         out = self.relu(out)
 
         return out
-
-
 
 
 class DecoderBlock(nn.Module):
@@ -116,7 +116,6 @@ class DecoderBlock(nn.Module):
         out = self.relu(out)
 
         return out
-
 
 
 
