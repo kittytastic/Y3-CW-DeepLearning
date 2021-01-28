@@ -24,10 +24,10 @@ class EncoderBlock(nn.Module):
 
     def __init__(self, in_planes, working_planes, stride=1, downsample=None):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_planes, working_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, working_planes, kernel_size=3, stride=stride, padding=1, bias=True)
         self.bn1 = nn.BatchNorm2d(working_planes)
         
-        self.conv2 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=True)
         self.bn2 = nn.BatchNorm2d(working_planes)
         
         self.downsample = downsample
@@ -63,12 +63,12 @@ class DecoderBlock(nn.Module):
 
     def __init__(self, working_planes, out_planes, scale=1, upsample=None):
         super().__init__()
-        self.conv1 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=True)
         self.bn1 = nn.BatchNorm2d(working_planes)
         
         self.conv2 = nn.Sequential(
                 Interpolate(scale_factor=scale), 
-                nn.Conv2d(working_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=False)
+                nn.Conv2d(working_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=True)
             )
         self.bn2 = nn.BatchNorm2d(out_planes)
         
@@ -103,7 +103,7 @@ class ResNetEncoder(nn.Module):
         self.current_planes = 64 # As per paper - we start with 64 planes
 
         # Layer 1
-        self.conv1 = nn.Conv2d(3, self.current_planes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = nn.Conv2d(3, self.current_planes, kernel_size=7, stride=2, padding=3, bias=True)
         self.bn1 = nn.BatchNorm2d(self.current_planes)
         self.relu = nn.ReLU(inplace=True)
 
@@ -126,7 +126,7 @@ class ResNetEncoder(nn.Module):
         # We don't want to do this on the first layer as that is done in a special conv
         if stride != 1:
             downsample = nn.Sequential(
-                nn.Conv2d(self.current_planes, layer_planes, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(self.current_planes, layer_planes, kernel_size=1, stride=stride, bias=True),
                 nn.BatchNorm2d(layer_planes),
             )
 
@@ -187,7 +187,7 @@ class ResNetDecoder(nn.Module):
         
         # Reverse 7x7 stride 2 downsampling
         self.upscale = Interpolate(scale_factor=2)
-        self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=True)
 
         self.renorm = nn.Sigmoid()
 
