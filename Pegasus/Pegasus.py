@@ -295,7 +295,7 @@ def TryPegasus(model, width=8, rows=8):
     plotTensor(birds)
    
 
-TryPegasus(Vres)
+#TryPegasus(Vres)
 
 # %%
 # Plot Latent Space
@@ -363,33 +363,21 @@ def PlotCustomLatentSpace(model, datasets, class_labels):
 
 
 # %%
-horses, birds = HorseBirdTensors(count=1000)
-planes = GetTensorOfClass('airplane', 1000)
-cats = GetTensorOfClass('cat', 1000)
-PlotCustomLatentSpace(Vres, [birds, cats], ['birds', 'cat'])
-#def InvestigateBirds(model, count=128):
-    
-    
-
-    
-
-
-
-
-#InvestigateBirds(Vres, count=1000)
-
-# %%
 def plotImageFrom(images, ds):
     t = torch.zeros(len(images), image_channels, image_size, image_size, requires_grad=False)
     for i in range(len(images)):
         t[i] = ds[images[i]]
     plotTensor(t)
-plotImageFrom([285, 228, 318, 718, 928], planes)
-plotImageFrom([300, 767, 981, 371, 208], planes)
-plotImageFrom([569, 433, 227, 212, 148], birds)
-#plotImageFrom([, , , , ], birds)
+
+'''
+horses, birds = HorseBirdTensors(count=1000)
+planes = GetTensorOfClass('airplane', 1000)
+cats = GetTensorOfClass('cat', 1000)
+PlotCustomLatentSpace(Vres, [birds, cats], ['birds', 'cat'])
+'''
 
 # %%
+'''
 from sklearn.cluster import KMeans
 
 cluster_count = 15
@@ -403,9 +391,10 @@ centers = torch.FloatTensor(centers)
 centers = centers.to(device)
 out_t = Vres.decode(centers)
 plotTensor(out_t)
-
+'''
 
 # %% tags=[]
+'''
 groups = [[] for i in range(cluster_count)]
 group_lengths = [0] * cluster_count
 group_i = [0] * cluster_count
@@ -423,10 +412,7 @@ for i in range(len(predictions)):
 
 for i in range(len(group_lengths)):
     plotTensor(groups[i])
-
-
-    
-    
+'''
 
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
