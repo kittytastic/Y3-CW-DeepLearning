@@ -13,7 +13,7 @@ https://towardsdatascience.com/variational-autoencoder-demystified-with-pytorch-
 https://towardsdatascience.com/introduction-to-resnets-c0a830a288a4
 https://arxiv.org/pdf/1512.03385.pdf
 https://www.youtube.com/watch?v=DkNIBBBvcPs&feature=emb_rel_pause
-https://github.com/aladdinpersson/Machine-Learning-Collection
+https://github.com/aladdinpersson/Machine-Learning-Collection/blob/master/ML/Pytorch/CNN_architectures/pytorch_resnet.py
 
 
 https://orybkin.github.io/sigma-vae/
