@@ -66,7 +66,6 @@ class EncoderBlock(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-
         apply_convs = nn.Sequential(
             self.conv1,
             self.bn1,
@@ -83,38 +82,44 @@ class EncoderBlock(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    """
-    ResNet block, but convs replaced with resize convs, and channel increase is in
-    second conv, not first
-    """
+    # Mirror image of Encode Block - kind of; skip connection follows dataflow
+    #           Conv1       Conv2
+    # Encode    Shrink         -
+    # Decode      -         Grow
 
     expansion = 1
 
-    def __init__(self, inplanes, planes, scale=1, upsample=None):
+    def __init__(self, working_planes, out_planes, scale=1, upsample=None):
         super().__init__()
-        self.conv1 = resize_conv3x3(inplanes, inplanes)
-        self.bn1 = nn.BatchNorm2d(inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = resize_conv3x3(inplanes, planes, scale)
-        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv1 = nn.Conv2d(working_planes, working_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(working_planes)
+        
+        self.conv2 = nn.Sequential(
+                Interpolate(scale_factor=scale), 
+                nn.Conv2d(working_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=False)
+            )
+        self.bn2 = nn.BatchNorm2d(out_planes)
+        
         self.upsample = upsample
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
         identity = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
         if self.upsample is not None:
             identity = self.upsample(x)
+        
+        apply_convs = nn.Sequential(
+            self.conv1,
+            self.bn1,
+            self.relu,
+            self.conv2,
+            self.bn2,
+        )
 
+        out = apply_convs(x)
         out += identity
         out = self.relu(out)
-
         return out
 
 
