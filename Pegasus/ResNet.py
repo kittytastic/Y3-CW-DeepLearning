@@ -126,60 +126,65 @@ class DecoderBlock(nn.Module):
 
 class ResNetEncoder(nn.Module):
 
-    def __init__(self, block, layers, first_conv=False, maxpool1=False):
+    def __init__(self, layers):
         super().__init__()
 
-        self.inplanes = 64
-        self.first_conv = first_conv
-        self.maxpool1 = maxpool1
+        self.current_planes = 64 # As per paper - we start with 64 planes
 
-        if self.first_conv:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-        else:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-
-        self.bn1 = nn.BatchNorm2d(self.inplanes)
+        # Layer 1
+        self.conv1 = nn.Conv2d(3, self.current_planes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.current_planes)
         self.relu = nn.ReLU(inplace=True)
 
-        if self.maxpool1:
-            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        else:
-            self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1)
+        # Layer 2
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.conv_layer2 = self._make_layer(64, layers[0], stride=1)
 
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        # Layer 3 -> 5
+        self.conv_layer3 = self._make_layer(128, layers[1], stride=2)
+        self.conv_layer4 = self._make_layer(256, layers[2], stride=2)
+        self.conv_layer5 = self._make_layer(512, layers[3], stride=2)
+        
+        # Finalize
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, layer_planes, blocks, stride=None):
         downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
+
+        # Each layer spatially downsamples the previous layer's output
+        # We don't want to do this on the first layer as that is done in a special conv
+        if stride != 1:
             downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                nn.BatchNorm2d(planes * block.expansion),
+                nn.Conv2d(self.current_planes, layer_planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(layer_planes),
             )
 
+
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
+
+        # If we downsample then the first of n block downsamples
+        layers.append(EncoderBlock(self.current_planes, layer_planes, stride, downsample))
+        self.current_planes = layer_planes
+
+        # The rest don't touch the dimensions
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(EncoderBlock(layer_planes, layer_planes))
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        x = self.avgpool(x)
+        x = nn.Sequential(
+            self.conv1,
+            self.bn1,
+            self.relu,
+            self.maxpool,
+            self.conv_layer2,
+            self.conv_layer3,
+            self.conv_layer4,
+            self.conv_layer5,
+            self.avgpool,
+        )(x)
+        
         x = torch.flatten(x, 1)
         return x
 
@@ -261,8 +266,8 @@ class ResNetDecoder(nn.Module):
         return x
 
 
-def resnet18_encoder(first_conv, maxpool1):
-    return ResNetEncoder(EncoderBlock, [2, 2, 2, 2], first_conv, maxpool1)
+def resnet18_encoder():
+    return ResNetEncoder([2, 2, 2, 2])
 
 
 def resnet18_decoder(latent_dim, input_height, first_conv, maxpool1):
