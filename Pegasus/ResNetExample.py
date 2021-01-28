@@ -80,6 +80,47 @@ class EncoderBlock(nn.Module):
         return out
 
 
+class EncoderBottleneck(nn.Module):
+    """
+    ResNet bottleneck, copied from
+    https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py#L75
+    """
+
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super().__init__()
+        width = planes  # this needs to change if we want wide resnets
+        self.conv1 = conv1x1(inplanes, width)
+        self.bn1 = nn.BatchNorm2d(width)
+        self.conv2 = conv3x3(width, width, stride)
+        self.bn2 = nn.BatchNorm2d(width)
+        self.conv3 = conv1x1(width, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+        return out
 
 
 class DecoderBlock(nn.Module):
@@ -118,6 +159,46 @@ class DecoderBlock(nn.Module):
         return out
 
 
+class DecoderBottleneck(nn.Module):
+    """
+    ResNet bottleneck, but convs replaced with resize convs
+    """
+
+    expansion = 4
+
+    def __init__(self, inplanes, planes, scale=1, upsample=None):
+        super().__init__()
+        width = planes  # this needs to change if we want wide resnets
+        self.conv1 = resize_conv1x1(inplanes, width)
+        self.bn1 = nn.BatchNorm2d(width)
+        self.conv2 = resize_conv3x3(width, width, scale)
+        self.bn2 = nn.BatchNorm2d(width)
+        self.conv3 = conv1x1(width, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+        self.relu = nn.ReLU(inplace=True)
+        self.upsample = upsample
+        self.scale = scale
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.upsample is not None:
+            identity = self.upsample(x)
+
+        out += identity
+        out = self.relu(out)
+        return out
 
 
 class ResNetEncoder(nn.Module):
@@ -263,3 +344,11 @@ def resnet18_encoder(first_conv, maxpool1):
 
 def resnet18_decoder(latent_dim, input_height, first_conv, maxpool1):
     return ResNetDecoder(DecoderBlock, [2, 2, 2, 2], latent_dim, input_height, first_conv, maxpool1)
+
+
+def resnet50_encoder(first_conv, maxpool1):
+    return ResNetEncoder(EncoderBottleneck, [3, 4, 6, 3], first_conv, maxpool1)
+
+
+def resnet50_decoder(latent_dim, input_height, first_conv, maxpool1):
+    return ResNetDecoder(DecoderBottleneck, [3, 4, 6, 3], latent_dim, input_height, first_conv, maxpool1)
