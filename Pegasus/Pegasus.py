@@ -418,7 +418,7 @@ for i in range(len(group_lengths)):
 # **Define resnet VAE**
 
 # %% tags=[]
-from ResNet import resnet18_encoder, resnet18_decoder
+
 
 def softclip(tensor, min):
     """ Clips the tensor values at the minimum value min in a softway. Taken from Handful of Trials """
@@ -482,7 +482,8 @@ class VAE(nn.Module):
         # measure prob of seeing image under p(x|z)
         log_pxz = dist.log_prob(x)
         return log_pxz.sum(dim=(1, 2, 3))
-
+        
+        
     def backpropagate(self, loss):
         self.optimiser.zero_grad()
         loss.backward()
@@ -535,27 +536,24 @@ class VAE(nn.Module):
 # %% [markdown]
 # ** Basic VAE **
 
-# %%
-from OldModels import CondenseEncoder, CondenseDecoder
-vae_b_enc4 = CondenseEncoder(latent_size=latent_size, n_channels=image_channels)
-vae_b_dec4= CondenseDecoder(latent_size=latent_size, batch_size=batch_size, n_channels=image_channels)
-V2 = VAE(vae_b_enc4, vae_b_dec4).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(V2, 0)
-#PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
-
 # %% tags=[]
-vae_res_enc = resnet18_encoder(False, False)
-vae_res_dec = resnet18_decoder(
+import ResNet
+#import importlib
+#importlib.reload(ResNet)
+from ResNet import resnet18_encoder, resnet18_decoder
+
+vae_enc = resnet18_encoder()
+vae_dec = resnet18_decoder(
     latent_dim=latent_size,
-    input_height=image_size,
-    first_conv=False,
-    maxpool1=False
+    input_height=image_size
 )
-Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-RestoreModel(Vres, 'Vres-10hr')
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 900)
+Vres = VAE(vae_enc, vae_dec).to(device)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 10)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
+
+# %%
+CheckpointModel(Vres, 'VresClean18-10hr')
 
 # %%
 PlotModelRandomGeneratedSample(Vres)
@@ -568,24 +566,6 @@ PlotLatentSpace(Vres)
 
 # %%
 PlotModelSampleEncoding(Vres)
-
-# %%
-vae_res_enc2 = resnet18_encoder(False, False)
-vae_res_dec2 = resnet18_decoder(
-    latent_dim=latent_size,
-    input_height=image_size,
-    first_conv=False,
-    maxpool1=False
-)
-Vres2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
-RestoreModel(Vres2, 'Vres-10hr')
-
-
-# %%
-PlotModelSampleEncoding(Vres2)
-
-# %%
-PlotSmallRandomSample(Vres2)
 
 # %%
 from ipywidgets import interact, interactive, fixed, interact_manual
@@ -629,3 +609,15 @@ def LatentSpacePlayground(model):
 
 #display(*LatentSpacePlayground(Vres))
 
+
+# %%
+from ResNetExample import resnet18_encoder, resnet18_decoder
+vae_old_enc = resnet18_encoder(False, False)
+vae_old_dec = resnet18_decoder(
+    latent_dim=latent_size,
+    input_height=image_size,
+    first_conv=False,
+    maxpool1=False
+)
+Vres_old = VAE(vae_old_enc, vae_old_dec).to(device)
+RestoreModel(Vres_old, 'Vres-20hr')
