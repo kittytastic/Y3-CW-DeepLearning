@@ -295,7 +295,7 @@ def TryPegasus(model, width=8, rows=8):
     plotTensor(birds)
    
 
-#TryPegasus(Vres2)
+TryPegasus(Vres)
 
 # %%
 # Plot Latent Space
@@ -342,6 +342,7 @@ def PlotCustomLatentSpace(model, datasets, class_labels):
 
     data = np.empty([0, latent_size])
     labels = []
+    indexes = []
     for i in range(len(datasets)):
         ds = datasets[i]
         l = class_labels[i]
@@ -351,22 +352,81 @@ def PlotCustomLatentSpace(model, datasets, class_labels):
         z = np.squeeze(z)
         data = np.concatenate((data, z), axis=0)
         labels+=[l]*len(ds)
+        indexes += list(range(len(ds)))
     
     
     mapper = umap.UMAP(n_neighbors=15).fit(data)
     labels_df['labels']=labels
-    umap.plot.points(mapper, labels=labels_df['labels'])
+    labels_df['index']=indexes
+    p = umap.plot.interactive(mapper, labels=labels_df['labels'], hover_data = labels_df, point_size=2)
+    umap.plot.show(p)
 
 
 # %%
-def InvestigateBirds(model, count=128):
-    horses, birds = HorseBirdTensors(count=count)
-    planes = GetTensorOfClass('airplane', count)
+horses, birds = HorseBirdTensors(count=1000)
+planes = GetTensorOfClass('airplane', 1000)
+cats = GetTensorOfClass('cat', 1000)
+PlotCustomLatentSpace(Vres, [birds, cats], ['birds', 'cat'])
+#def InvestigateBirds(model, count=128):
+    
+    
 
-    PlotCustomLatentSpace(model, [birds, planes], ['birds', 'planes'])
+    
 
-#InvestigateBirds(Vres2, count=2024)
 
+
+
+#InvestigateBirds(Vres, count=1000)
+
+# %%
+def plotImageFrom(images, ds):
+    t = torch.zeros(len(images), image_channels, image_size, image_size, requires_grad=False)
+    for i in range(len(images)):
+        t[i] = ds[images[i]]
+    plotTensor(t)
+plotImageFrom([285, 228, 318, 718, 928], planes)
+plotImageFrom([300, 767, 981, 371, 208], planes)
+plotImageFrom([569, 433, 227, 212, 148], birds)
+#plotImageFrom([, , , , ], birds)
+
+# %%
+from sklearn.cluster import KMeans
+
+cluster_count = 15
+birds_gpu = birds.to(device)
+birds_encodeed = Vres.full_encode(birds_gpu).detach().cpu().numpy()
+birds_encodeed = np.squeeze(birds_encodeed)
+kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(birds_encodeed)
+print(kmeans.cluster_centers_.shape)
+centers = kmeans.cluster_centers_
+centers = torch.FloatTensor(centers)
+centers = centers.to(device)
+out_t = Vres.decode(centers)
+plotTensor(out_t)
+
+
+# %% tags=[]
+groups = [[] for i in range(cluster_count)]
+group_lengths = [0] * cluster_count
+group_i = [0] * cluster_count
+predictions = kmeans.predict(birds_encodeed[:100])
+for i in range(len(predictions)):
+    group_lengths[predictions[i]] += 1
+
+for i in range(len(group_lengths)):
+    groups[i] = torch.zeros(group_lengths[i], image_channels, image_size, image_size, requires_grad=False)
+
+for i in range(len(predictions)):
+    g = predictions[i]
+    groups[g][group_i[g]] = birds[i]
+    group_i[g]+=1
+
+for i in range(len(group_lengths)):
+    plotTensor(groups[i])
+
+
+    
+    
 
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
@@ -494,8 +554,8 @@ from OldModels import CondenseEncoder, CondenseDecoder
 vae_b_enc4 = CondenseEncoder(latent_size=latent_size, n_channels=image_channels)
 vae_b_dec4= CondenseDecoder(latent_size=latent_size, batch_size=batch_size, n_channels=image_channels)
 V2 = VAE(vae_b_enc4, vae_b_dec4).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(V2, 20)
-PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
+elo_loss, kl_loss, recon_loss = TrainModel(V2, 0)
+#PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 
 # %% tags=[]
 vae_res_enc = resnet18_encoder(False, False)
@@ -506,7 +566,8 @@ vae_res_dec = resnet18_decoder(
     maxpool1=False
 )
 Vres = VAE(vae_res_enc, vae_res_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
+RestoreModel(Vres, 'Vres-10hr')
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 900)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
@@ -520,6 +581,9 @@ PlotSmallRandomSample(Vres)
 PlotLatentSpace(Vres)
 
 # %%
+PlotModelSampleEncoding(Vres)
+
+# %%
 vae_res_enc2 = resnet18_encoder(False, False)
 vae_res_dec2 = resnet18_decoder(
     latent_dim=latent_size,
@@ -529,6 +593,7 @@ vae_res_dec2 = resnet18_decoder(
 )
 Vres2 = VAE(vae_res_enc2, vae_res_dec2).to(device)
 RestoreModel(Vres2, 'Vres-10hr')
+
 
 # %%
 PlotModelSampleEncoding(Vres2)
@@ -542,6 +607,21 @@ import ipywidgets as widgets
 
 
 # %%
+def on_button_clicked(b):
+    slider_vals = [s.value for s in sliders]
+    #for i in range(16):
+     #   slider_val.append(sliders[i].value)
+
+    with output:
+        output.clear_output()
+        ts = torch.zeros(1,latent_size)
+        ts[0] = torch.FloatTensor(slider_vals)
+        ts = ts.to(device)
+        genImg = Vres2.decode(ts)
+        plotTensor(genImg)
+        #plt.plot(slider_val)
+        #plt.show()
+        
 sliders = []
 row_size = 16
 vb = []
@@ -561,23 +641,5 @@ for i in range(int(math.ceil(latent_size/row_size))):
 slider_bank = widgets.VBox(vb)
 output = widgets.Output()
 
-display(slider_bank, output)
+#display(slider_bank, output)
 
-
-# %%
-def on_button_clicked(b):
-    slider_vals = [s.value for s in sliders]
-    #for i in range(16):
-     #   slider_val.append(sliders[i].value)
-
-    with output:
-        output.clear_output()
-        ts = torch.zeros(1,latent_size)
-        ts[0] = torch.FloatTensor(slider_vals)
-        ts = ts.to(device)
-        genImg = Vres2.decode(ts)
-        plotTensor(genImg)
-        #plt.plot(slider_val)
-        #plt.show()
-
-# %%
