@@ -142,7 +142,7 @@ class ResNetEncoder(nn.Module):
         self.conv_layer4 = self._make_layer(256, layers[2], stride=2)
         self.conv_layer5 = self._make_layer(512, layers[3], stride=2)
         
-        # Finalize
+        # Flatten planes into 1 number HxW
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
     def _make_layer(self, layer_planes, blocks, stride=None):
@@ -191,75 +191,64 @@ class ResNetDecoder(nn.Module):
     Resnet in reverse order
     """
 
-    def __init__(self, block, layers, latent_dim, input_height, first_conv=False, maxpool1=False):
+    def __init__(self, layers, latent_dim, input_height):
         super().__init__()
 
-        self.expansion = block.expansion
-        self.inplanes = 512 * block.expansion
-        self.first_conv = first_conv
-        self.maxpool1 = maxpool1
+        self.current_planes = 512 # As per paper
         self.input_height = input_height
 
-        self.upscale_factor = 8
-
-        self.linear = nn.Linear(latent_dim, self.inplanes * 4 * 4)
-
-        self.layer1 = self._make_layer(block, 256, layers[0], scale=2)
-        self.layer2 = self._make_layer(block, 128, layers[1], scale=2)
-        self.layer3 = self._make_layer(block, 64, layers[2], scale=2)
-
-        if self.maxpool1:
-            self.layer4 = self._make_layer(block, 64, layers[3], scale=2)
-            self.upscale_factor *= 2
-        else:
-            self.layer4 = self._make_layer(block, 64, layers[3])
-
-        if self.first_conv:
-            self.upscale = Interpolate(scale_factor=2)
-            self.upscale_factor *= 2
-        else:
-            self.upscale = Interpolate(scale_factor=1)
-
+        # Linear layer to take us from latent to 4 x 4 x planes 
+        self.linear = nn.Linear(latent_dim, self.current_planes * 4 * 4)
+        
         # interpolate after linear layer using scale factor
-        self.upscale1 = Interpolate(size=input_height // self.upscale_factor)
+        self.upscale1 = Interpolate(size=input_height // 32)
 
-        self.conv1 = nn.Conv2d(64 * block.expansion, 3, kernel_size=3, stride=1, padding=1, bias=False)
+        # Opposite Layer 5 -> 3
+        self.conv_layer5 = self._make_layer(256, layers[0], scale=2)
+        self.conv_layer4 = self._make_layer(128, layers[1], scale=2)
+        self.conv_layer3 = self._make_layer(64, layers[2], scale=2)
+
+        # Reverse second layer 3x3 stride 2
+        self.conv_layer2 = self._make_layer(64, layers[3], scale=2)
+        
+        # Reverse 7x7 stride 2 downsampling
+        self.upscale = Interpolate(scale_factor=2)
+        self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=False)
 
         self.renorm = nn.Sigmoid()
 
-    def _make_layer(self, block, planes, blocks, scale=1):
+    def _make_layer(self, target_planes, blocks, scale=1):
         upsample = None
-        if scale != 1 or self.inplanes != planes * block.expansion:
+        if scale != 1:
             upsample = nn.Sequential(
-                resize_conv1x1(self.inplanes, planes * block.expansion, scale),
-                nn.BatchNorm2d(planes * block.expansion),
+                Interpolate(scale_factor=scale),
+                nn.Conv2d(self.current_planes, target_planes , kernel_size=1, stride=1),
+                nn.BatchNorm2d(target_planes),
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, scale, upsample))
-        self.inplanes = planes * block.expansion
+        layers.append(DecoderBlock(self.current_planes, target_planes, scale, upsample))
+        self.current_planes = target_planes
+
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(DecoderBlock(self.current_planes, target_planes))
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.linear(x)
+        x = x.view(x.size(0), 512, 4, 4)
 
-        # NOTE: replaced this by Linear(in_channels, 514 * 4 * 4)
-        # x = F.interpolate(x, scale_factor=4)
-
-        x = x.view(x.size(0), 512 * self.expansion, 4, 4)
-        x = self.upscale1(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.upscale(x)
-
-        x = self.conv1(x)
-        x = self.renorm(x)
+        x = nn.Sequential(
+            self.upscale1,
+            self.conv_layer5,
+            self.conv_layer4,
+            self.conv_layer3,
+            self.conv_layer2,
+            self.upscale,
+            self.conv1,
+            self.renorm,
+        )(x)
         return x
 
 
@@ -267,5 +256,5 @@ def resnet18_encoder():
     return ResNetEncoder([2, 2, 2, 2])
 
 
-def resnet18_decoder(latent_dim, input_height, first_conv, maxpool1):
-    return ResNetDecoder(DecoderBlock, [2, 2, 2, 2], latent_dim, input_height, first_conv, maxpool1)
+def resnet18_decoder(latent_dim, input_height):
+    return ResNetDecoder([2, 2, 2, 2], latent_dim, input_height)
