@@ -66,18 +66,16 @@ class EncoderBlock(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-        apply_convs = nn.Sequential(
+        out = nn.Sequential(
             self.conv1,
             self.bn1,
             self.relu,
             self.conv2,
             self.bn2,
-        )
+        )(x)
 
-        out = apply_convs(x)
-        out += identity
+        out += identity # The skip connection
         out = self.relu(out)
-
         return out
 
 
@@ -109,16 +107,15 @@ class DecoderBlock(nn.Module):
         if self.upsample is not None:
             identity = self.upsample(x)
         
-        apply_convs = nn.Sequential(
+        out = nn.Sequential(
             self.conv1,
             self.bn1,
             self.relu,
             self.conv2,
             self.bn2,
-        )
+        )(x)
 
-        out = apply_convs(x)
-        out += identity
+        out += identity # The skip connection
         out = self.relu(out)
         return out
 
