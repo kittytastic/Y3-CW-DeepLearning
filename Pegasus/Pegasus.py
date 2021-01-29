@@ -139,21 +139,21 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             x,t = x.to(device), t.to(device)
 
             # Step Model
-            loss, kl_loss, recon_loss, _ = model.trainingStep(x, t)
+            loss = model.forwardStep(x)
             model.backpropagate(loss)
             
             # Collect Stats
             loss_item = loss.detach().item()
-            kl_item = kl_loss.detach().mean().cpu()
-            recon_item = recon_loss.detach().mean().cpu()
+            #kl_item = kl_loss.detach().mean().cpu()
+            #recon_item = recon_loss.detach().mean().cpu()
 
             iter_loss = np.append(iter_loss, loss_item)
 
         
         
         epoch_loss.append(iter_loss[-1])
-        t_kl.append(kl_item)
-        t_recon.append(recon_item)
+        #t_kl.append(kl_item)
+        #t_recon.append(recon_item)
 
         # Print Status
         epoch_iter.set_description("Current Loss %.5f    Epoch" % loss_item)
@@ -170,7 +170,8 @@ def PlotReconstructionAttempt(model):
     x,t = next(train_iterator)
     x = x[0:8]
     x = x.to(device)
-    _, _, _, x_hat = model.trainingStep(x, t)
+    x_hat = model.encode(x)
+    x_hat = model.decode(x_hat)
     plotTensor(x_hat)
     plotTensor(x)
 
@@ -189,114 +190,78 @@ def CompareByExample(model1, model2):
 # **Define resnet VAE**
 
 # %% tags=[]
-def softclip(tensor, min):
-    """ Clips the tensor values at the minimum value min in a softway. Taken from Handful of Trials """
-    result_tensor = min + F.softplus(tensor - min)
-
-    return result_tensor
+import warnings
 
 class VAE(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, learning_rate = 1e-4):
         super().__init__()
-
-        self.encode = encoder
-        self.decode = decoder
+        
+        self.encoder = encoder
+        self.decoder = decoder
 
         # output size depends on input size for some encoders
         demo_input = torch.ones([batch_size, image_channels, image_size, image_size])
-        h_dim = self.encode(demo_input).shape[1]
+        h_dim = self.encoder(demo_input).shape[1]
         
-        # distribution parameters
-        self.fc_mu = nn.Linear(h_dim, latent_size)
-        self.fc_var = nn.Linear(h_dim, latent_size)
+        if h_dim < latent_size:
+            warnings.warn('latent dimension [%d] > encoded dimension [%d]', latent_size, h_dim)
 
-        # for the gaussian likelihood
-        self.log_sigma = nn.Parameter(torch.Tensor([0.0]))
+        # Resize encoding to latent size 
+        self.encode_to_z = nn.Linear(h_dim, latent_size)
 
-        # to map z back to deecoder input
-        self.z_rescale = nn.Linear(latent_size, h_dim)
-
-        self.optimiser = torch.optim.Adam(self.parameters(), lr=1e-4)
+        self.optimiser = torch.optim.Adam(self.parameters(), lr=learning_rate)
+       
 
 
-    def kl_divergence(self, z, mu, std):
-        # --------------------------
-        # Monte carlo KL divergence
-        # --------------------------
-        # 1. define the first two probabilities (in this case Normal for both)
-        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-        q = torch.distributions.Normal(mu, std)
-
-        # 2. get the probabilities from the equation
-        log_qzx = q.log_prob(z)
-        log_pz = p.log_prob(z)
-
-        # kl
-        kl = (log_qzx - log_pz)
-        
-        # sum over last dim to go from single dim distribution to multi-dim
-        kl = kl.sum(-1)
-        return kl
-
-    def getRandomSample(self):
-        z = torch.rand(batch_size, latent_size)
+    def getRandomSample(self, count=batch_size):
+        z = torch.rand(count, latent_size)
         z = z.to(device)
         return self.decode(z)
 
-    def gaussian_likelihood(self, x_hat, log_sigma, x):
-        sigma = torch.exp(log_sigma)
-        mean = x_hat
-        dist = torch.distributions.Normal(mean, sigma)
+    def encode(self, x):
+        x = self.encoder(x)
+        x = self.encode_to_z(x)
+        return x
+  
+    def decode(self, x):
+        return self.decoder(x)
 
-        # measure prob of seeing image under p(x|z)
-        log_pxz = dist.log_prob(x)
-        return log_pxz.sum(dim=(1, 2, 3))
-        
-        
     def backpropagate(self, loss):
         self.optimiser.zero_grad()
         loss.backward()
         self.optimiser.step()
 
-    def full_encode(self, x):
-        x_encoded = self.encode(x)
-        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+    
+    def compute_kernel(self, x, y):
+        x_size = x.size(0)
+        y_size = y.size(0)
+        dim = x.size(1)
+        x = x.unsqueeze(1) # (x_size, 1, dim)
+        y = y.unsqueeze(0) # (1, y_size, dim)
+        tiled_x = x.expand(x_size, y_size, dim)
+        tiled_y = y.expand(x_size, y_size, dim)
+        kernel_input = (tiled_x - tiled_y).pow(2).mean(2)/float(dim)
+        return torch.exp(-kernel_input) # (x_size, y_size)
 
-        # sample z from q
-        std = torch.exp(log_var / 2)
-        q = torch.distributions.Normal(mu, std)
-        z = q.rsample()
-        return z
+    def compute_mmd(self, x, y):
+        x_kernel = self.compute_kernel(x, x)
+        y_kernel = self.compute_kernel(y, y)
+        xy_kernel = self.compute_kernel(x, y)
+        mmd = x_kernel.mean() + y_kernel.mean() - 2*xy_kernel.mean()
+        return mmd
 
-    def trainingStep(self, x, t):
 
-        # encode x to get the mu and variance parameters
-        x_encoded = self.encode(x)
-        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
-       
-        # sample z from q
-        std = torch.exp(log_var / 2)
-        q = torch.distributions.Normal(mu, std)
-        z = q.rsample()
-        
-        # decoded
+    def forwardStep(self, x):
+        z = self.encode(x)
         x_hat = self.decode(z)
 
-        # Learning the variance can become unstable in some cases. Softly limiting log_sigma to a minimum of -6
-        # ensures stable training.
-        log_sigma = softclip(self.log_sigma, -6)
-        
-        # reconstruction loss
-        recon_loss = self.gaussian_likelihood(x_hat, log_sigma, x)
+        random_z_sample = torch.randn(200, latent_size, device=device)
 
-        # kl
-        kl = self.kl_divergence(z, mu, std)
+        mmd = self.compute_mmd(random_z_sample, z)
+        nll = (x_hat - x).pow(2).mean()
+        loss = nll + mmd
 
-        # elbo
-        elbo_loss = (kl - recon_loss)
-        elbo_loss = elbo_loss.mean()
-
-        return (elbo_loss, kl, recon_loss, x_hat)
+        return loss
 
 
 #print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
@@ -317,7 +282,7 @@ vae_dec = resnet18_decoder(
     input_height=image_size
 )
 Vres = VAE(vae_enc, vae_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 5)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
@@ -329,3 +294,5 @@ PlotReconstructionAttempt(Vres)
 
 # %%
 PlotLatentSpace(Vres)
+
+# %%
