@@ -129,11 +129,10 @@ def RestoreModel(model, checkpoint_name):
     epoch = params['epoch']
     return epoch
 
-def plotTensor(tensor):
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
 
+
+# %%
+from Utils import *
 
 # %%
 from tqdm import trange
@@ -182,22 +181,6 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
 
 
 # %%
-def PlotLoss(loss_array, loss_type="Loss"):
-    plt.plot(loss_array)
-    plt.ylabel(loss_type)
-    plt.xlabel('Epoch')
-    plt.show()
-
-def PlotAllLoss(losses, loss_names):
-    fig, axs = plt.subplots(len(losses), sharex=True, gridspec_kw={'hspace': 0})
-    for i in range(len(losses)):
-        axs[i].plot(losses[i])
-        axs[i].set_ylabel(loss_names[i])
-    plt.xlabel('Epoch')
-    plt.show()
-
-
-# %%
 def PlotRandomLatentSample(model, count=8):
     rand_latent = model.getRandomSample()
     plotTensor(rand_latent[0:8])
@@ -219,191 +202,6 @@ def PlotCompareModels(model1, model2):
     plotTensor(x)
     plotTensor(x_hat_a)
     plotTensor(x_hat_b)
-
-
-# %%
-def HorseBirdTensors(count=batch_size):
-    hc = 0
-    bc = 0
-
-    horses = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
-    birds = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
-
-    while hc<count or bc<count:
-        x,t = next(train_iterator)
-        for i in range(len(t)):
-            cn = class_names[t[i].item()]
-            if cn == "horse" and hc<count:
-                horses[hc] = x[i]
-                hc+=1
-            if cn == "bird" and bc<count:
-                birds[bc] = x[i]
-                bc+=1
-    return horses, birds
-
-def GetTensorOfClass(class_name, count=batch_size):
-    if class_name not in class_names:
-        raise Exception("%s is not in classes"%class_name)
-
-    imgClass = torch.zeros(count, image_channels, image_size, image_size, requires_grad=False)
-    ic = 0
-
-    while ic<count:
-        x,t = next(train_iterator)
-        for i in range(len(t)):
-            cn = class_names[t[i].item()]
-            if cn == class_name and ic<count:
-                imgClass[ic] = x[i]
-                ic+=1
-    return imgClass
-
-def SeeHB(model):
-    horses, birds = HorseBirdTensors(count=128)
-
-    plotTensor(horses)
-    plotTensor(birds)
-
-def TryPegasus(model, width=8, rows=8):
-    horses, birds = HorseBirdTensors(count=rows)
-
-    gpu_horses = horses.to(device)
-    gpu_birds = birds.to(device)
-    z_horses = model.full_encode(gpu_horses)
-    z_birds = model.full_encode(gpu_birds)
-    
-    
-    z_amalgum = torch.zeros(rows*width, latent_size)
-    for i in range(rows):
-        cm = width-1
-        for j in range(width):
-            z_amalgum[i*width+j] = z_horses[i]*j/cm + z_birds[i]*(1-j/cm)
-
-    z_amalgum = z_amalgum.to(device)
-    pegasus_decoded = model.decode(z_amalgum)
-    plotTensor(pegasus_decoded)
-
-    plotTensor(horses)
-    plotTensor(birds)
-   
-
-#TryPegasus(Vres)
-
-# %%
-# Plot Latent Space
-import umap
-import pandas as pd
-import umap.plot
-
-def PlotLatentSpace(model, point_count=1000):
-
-    acc_labels = None
-    acc_vals = None
-
-    for i in range(point_count//batch_size):
-        # sample x from the dataset
-        x,l = next(train_iterator)
-        x,t = x.to(device), l.to(device)
-
-        z = model.full_encode(x).cpu()
-
-        latent_space = z.detach().numpy()
-        labels = np.array(l)
-        
-        latent_space = np.squeeze(latent_space)
-
-        if not acc_labels is None:
-            acc_labels = np.concatenate((acc_labels, labels), axis=0)
-            acc_vals = np.concatenate((acc_vals, latent_space))
-        else:
-            acc_labels = labels
-            acc_vals = latent_space
-
-
-    df = pd.DataFrame(data=acc_vals)
-
-    mapper = umap.UMAP(n_neighbors=15).fit(df)
-    df['labels'] = acc_labels
-    df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
-    umap.plot.points(mapper, labels=df["labels"])
-
-def PlotCustomLatentSpace(model, datasets, class_labels):
-    full_df =  pd.DataFrame()
-    data_df = pd.DataFrame()
-    labels_df = pd.DataFrame()
-
-    data = np.empty([0, latent_size])
-    labels = []
-    indexes = []
-    for i in range(len(datasets)):
-        ds = datasets[i]
-        l = class_labels[i]
-        ds, l = ds.to(device), l
-
-        z = model.full_encode(ds).detach().cpu().numpy()
-        z = np.squeeze(z)
-        data = np.concatenate((data, z), axis=0)
-        labels+=[l]*len(ds)
-        indexes += list(range(len(ds)))
-    
-    
-    mapper = umap.UMAP(n_neighbors=15).fit(data)
-    labels_df['labels']=labels
-    labels_df['index']=indexes
-    p = umap.plot.interactive(mapper, labels=labels_df['labels'], hover_data = labels_df, point_size=2)
-    umap.plot.show(p)
-
-
-# %%
-def plotImageFrom(images, ds):
-    t = torch.zeros(len(images), image_channels, image_size, image_size, requires_grad=False)
-    for i in range(len(images)):
-        t[i] = ds[images[i]]
-    plotTensor(t)
-
-'''
-horses, birds = HorseBirdTensors(count=1000)
-planes = GetTensorOfClass('airplane', 1000)
-cats = GetTensorOfClass('cat', 1000)
-PlotCustomLatentSpace(Vres, [birds, cats], ['birds', 'cat'])
-'''
-
-# %%
-'''
-from sklearn.cluster import KMeans
-
-cluster_count = 15
-birds_gpu = birds.to(device)
-birds_encodeed = Vres.full_encode(birds_gpu).detach().cpu().numpy()
-birds_encodeed = np.squeeze(birds_encodeed)
-kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(birds_encodeed)
-print(kmeans.cluster_centers_.shape)
-centers = kmeans.cluster_centers_
-centers = torch.FloatTensor(centers)
-centers = centers.to(device)
-out_t = Vres.decode(centers)
-plotTensor(out_t)
-'''
-
-# %% tags=[]
-'''
-groups = [[] for i in range(cluster_count)]
-group_lengths = [0] * cluster_count
-group_i = [0] * cluster_count
-predictions = kmeans.predict(birds_encodeed[:100])
-for i in range(len(predictions)):
-    group_lengths[predictions[i]] += 1
-
-for i in range(len(group_lengths)):
-    groups[i] = torch.zeros(group_lengths[i], image_channels, image_size, image_size, requires_grad=False)
-
-for i in range(len(predictions)):
-    g = predictions[i]
-    groups[g][group_i[g]] = birds[i]
-    group_i[g]+=1
-
-for i in range(len(group_lengths)):
-    plotTensor(groups[i])
-'''
 
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
