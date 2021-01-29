@@ -129,6 +129,11 @@ def RestoreModel(model, checkpoint_name):
     epoch = params['epoch']
     return epoch
 
+def plotTensor(tensor):
+    plt.grid(False)
+    plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
+
 
 # %%
 from tqdm import trange
@@ -183,8 +188,6 @@ def PlotLoss(loss_array, loss_type="Loss"):
     plt.xlabel('Epoch')
     plt.show()
 
-
-# %%
 def PlotAllLoss(losses, loss_names):
     fig, axs = plt.subplots(len(losses), sharex=True, gridspec_kw={'hspace': 0})
     for i in range(len(losses)):
@@ -195,25 +198,17 @@ def PlotAllLoss(losses, loss_names):
 
 
 # %%
-def PlotModelRandomGeneratedSample(model):
+def PlotRandomLatentSample(model, count=8):
     rand_latent = model.getRandomSample()
-    plt.rcParams['figure.dpi'] = 175
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(rand_latent).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
+    plotTensor(rand_latent[0:8])
 
-
-# %%
-def PlotModelSampleEncoding(model):
+def PlotReconstructionAttempt(model):
     x,t = next(train_iterator)
+    x = x[0:8]
     x = x.to(device)
     _, _, _, x_hat = model.trainingStep(x, t)
-    plt.rcParams['figure.dpi'] = 175
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(x_hat[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
-    plt.imshow(torchvision.utils.make_grid(x[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
+    plotTensor(x_hat)
+    plotTensor(x)
 
 def PlotCompareModels(model1, model2):
     x,t = next(train_iterator)
@@ -224,15 +219,6 @@ def PlotCompareModels(model1, model2):
     plotTensor(x)
     plotTensor(x_hat_a)
     plotTensor(x_hat_b)
-
-
-# %%
-def PlotSmallRandomSample(model, count=8):
-    rand_latent = model.getRandomSample()
-    plt.rcParams['figure.dpi'] = 175
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(rand_latent[0:10]).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
 
 
 # %%
@@ -270,11 +256,6 @@ def GetTensorOfClass(class_name, count=batch_size):
                 imgClass[ic] = x[i]
                 ic+=1
     return imgClass
-
-def plotTensor(tensor):
-    plt.grid(False)
-    plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-    plt.show()
 
 def SeeHB(model):
     horses, birds = HorseBirdTensors(count=128)
@@ -563,12 +544,6 @@ PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
 # %%
-CheckpointModel(Vres, 'VresClean18-10hr', 1300)
-
-# %%
-PlotModelRandomGeneratedSample(Vres)
-
-# %%
 PlotSmallRandomSample(Vres)
 
 # %%
@@ -576,49 +551,6 @@ PlotLatentSpace(Vres)
 
 # %%
 PlotModelSampleEncoding(Vres)
-
-# %%
-from ipywidgets import interact, interactive, fixed, interact_manual
-import ipywidgets as widgets
-from IPython.display import display
-
-def LatentSpacePlayground(model):
-    def on_slider_change(b):
-        slider_vals = [s.value for s in sliders]
-        
-        with output:
-            output.clear_output()
-            ts = torch.zeros(1,latent_size)
-            ts[0] = torch.FloatTensor(slider_vals)
-            ts = ts.to(device)
-            genImg = model.decode(ts)
-            plotTensor(genImg)
-
-            
-    sliders = []
-    row_size = 16
-    vb = []
-    for i in range(int(math.ceil(latent_size/row_size))):
-        left = latent_size - row_size*i
-        hb = []
-        for j in range(min(row_size, left)):
-            v = i * row_size + j
-            slider = widgets.FloatSlider(description='LV %d'%v, continuous_update=False, orientation='vertical', min=-2, max=2)
-            sliders.append(slider)
-            sliders[-1].observe(on_slider_change, names='value')
-            hb.append(slider)
-        
-        vb.append(widgets.HBox(hb))
-
-
-    slider_bank = widgets.VBox(vb)
-    output = widgets.Output()
-
-    return (slider_bank, output)
-
-
-#display(*LatentSpacePlayground(Vres))
-
 
 # %%
 from ResNetExample import resnet18_encoder, resnet18_decoder
@@ -654,5 +586,8 @@ Vtest = VAE(vae_test_enc, vae_test_dec).to(device)
 elo_loss2, kl_loss2, recon_loss2 = TrainModel(Vtest, 200)
 PlotAllLoss([elo_loss2, kl_loss2, recon_loss2], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
+
+# %%
+PlotLoss(elo_loss2)
 
 # %%
