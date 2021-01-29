@@ -130,7 +130,6 @@ def RestoreModel(model, checkpoint_name):
     return epoch
 
 
-
 # %%
 from Utils import *
 
@@ -193,7 +192,7 @@ def PlotReconstructionAttempt(model):
     plotTensor(x_hat)
     plotTensor(x)
 
-def PlotCompareModels(model1, model2):
+def CompareByExample(model1, model2):
     x,t = next(train_iterator)
     x = x[0:8]
     x = x.to(device)
@@ -342,50 +341,10 @@ PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 
 # %%
-PlotSmallRandomSample(Vres)
+PlotRandomLatentSample(Vres)
+
+# %%
+PlotReconstructionAttempt(Vres)
 
 # %%
 PlotLatentSpace(Vres)
-
-# %%
-PlotModelSampleEncoding(Vres)
-
-# %%
-from ResNetExample import resnet18_encoder, resnet18_decoder
-vae_old_enc = resnet18_encoder(False, False)
-vae_old_dec = resnet18_decoder(
-    latent_dim=latent_size,
-    input_height=image_size,
-    first_conv=False,
-    maxpool1=False
-)
-Vres_old = VAE(vae_old_enc, vae_old_dec).to(device)
-RestoreModel(Vres_old, 'Vres-20hr')
-
-# %%
-PlotModelSampleEncoding(Vres_old)
-
-# %%
-elo_loss, kl_loss, recon_loss = TrainModel(Vres_old, 1)
-
-# %%
-PlotCompareModels(Vres_old, Vres)
-
-# %%
-from ResNetExample import resnet18_encoder, resnet18_decoder
-vae_test_enc = resnet18_encoder(True, True)
-vae_test_dec = resnet18_decoder(
-    latent_dim=latent_size,
-    input_height=image_size,
-    first_conv=False,
-    maxpool1=False
-)
-Vtest = VAE(vae_test_enc, vae_test_dec).to(device)
-elo_loss2, kl_loss2, recon_loss2 = TrainModel(Vtest, 200)
-PlotAllLoss([elo_loss2, kl_loss2, recon_loss2], ["EBLO", "KL", "Recon"])
-PlotLoss(elo_loss)
-
-# %%
-PlotLoss(elo_loss2)
-
-# %%
