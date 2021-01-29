@@ -34,6 +34,9 @@ latent_size = 32
 dataset = 'cifar10'
 
 # %%
+from Utils import *
+
+# %%
 targetGPU = "GeForce GTX 1080 Ti"
 
 if torch.cuda.is_available():
@@ -67,20 +70,6 @@ def cycle(iterable):
             yield x
 
 # you may use cifar10 or stl10 datasets
-if dataset == 'fashion-mnist':
-    train_loader = torch.utils.data.DataLoader(
-        torchvision.datasets.FashionMNIST('./Dataset/fashion-mnist', train=True, download=True, transform=torchvision.transforms.Compose([
-            torchvision.transforms.Lambda(lambda x: x.convert('RGB') ),
-            torchvision.transforms.ToTensor(),
-        ])),
-        shuffle=True, batch_size=batch_size, drop_last=True
-    )
-
-    image_channels = 3
-    image_size = 28
-    class_names = ['top', 'Trouser', 'Pullover', 'Dress', 'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
-
-# you may use cifar10 or stl10 datasets
 if dataset == 'cifar10':
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download=True, transform=torchvision.transforms.Compose([
@@ -109,13 +98,9 @@ train_iterator = iter(cycle(train_loader))
 
 # %% colab={"base_uri": "https://localhost:8080/", "height": 630} id="BtJs-qxHRLXz" outputId="770d6f89-c5dc-4b2d-fca4-0d7b96ec256e"
 # let's view some of the training data
-plt.rcParams['figure.dpi'] = 175
 x,t = next(train_iterator)
 x,t = x.to(device), t.to(device)
-plt.grid(False)
-plt.title("Example data")
-plt.imshow(torchvision.utils.make_grid(x).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
-plt.show()
+plotTensor(x)
 
 
 # %%
@@ -129,9 +114,6 @@ def RestoreModel(model, checkpoint_name):
     epoch = params['epoch']
     return epoch
 
-
-# %%
-from Utils import *
 
 # %%
 from tqdm import trange
@@ -202,12 +184,11 @@ def CompareByExample(model1, model2):
     plotTensor(x_hat_a)
     plotTensor(x_hat_b)
 
+
 # %% [markdown] id="Qnjh12UbNFpV"
 # **Define resnet VAE**
 
 # %% tags=[]
-
-
 def softclip(tensor, min):
     """ Clips the tensor values at the minimum value min in a softway. Taken from Handful of Trials """
     result_tensor = min + F.softplus(tensor - min)
@@ -322,7 +303,7 @@ class VAE(nn.Module):
 
 
 # %% [markdown]
-# ** Basic VAE **
+# # Test Model
 
 # %% tags=[]
 import ResNet
@@ -336,7 +317,7 @@ vae_dec = resnet18_decoder(
     input_height=image_size
 )
 Vres = VAE(vae_enc, vae_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1300)
+elo_loss, kl_loss, recon_loss = TrainModel(Vres, 1)
 PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
 PlotLoss(elo_loss)
 

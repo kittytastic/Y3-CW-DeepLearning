@@ -1,6 +1,8 @@
 import umap
 import pandas as pd
 import umap.plot
+import matplotlib.pyplot as plt
+import torchvision
 
 #######################################################
 #                     Latent space                    #
@@ -11,7 +13,7 @@ def PlotLatentSpace(model, point_count=1000):
     acc_labels = None
     acc_vals = None
 
-    for i in range(point_count//batch_size):
+    for i in range(point_count//256):
         # sample x from the dataset
         x,l = next(train_iterator)
         x,t = x.to(device), l.to(device)
