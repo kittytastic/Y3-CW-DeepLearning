@@ -214,9 +214,9 @@ class ResNetDecoder(nn.Module):
         return x
 
 
-def resnet18_encoder():
+def ResNet18Encoder():
     return ResNetEncoder([2, 2, 2, 2])
 
 
-def resnet18_decoder(latent_dim, input_height):
+def ResNet18Decoder(latent_dim, input_height):
     return ResNetDecoder([2, 2, 2, 2], latent_dim, input_height)
