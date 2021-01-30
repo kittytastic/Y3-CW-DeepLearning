@@ -7,18 +7,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-
-class Interpolate(nn.Module):
-    """nn.Module wrapper for F.interpolate"""
-
-    def __init__(self, size=None, scale_factor=None):
-        super().__init__()
-        self.size, self.scale_factor = size, scale_factor
-
-    def forward(self, x):
-        return F.interpolate(x, size=self.size, scale_factor=self.scale_factor)
-
-
 class EncoderBlock(nn.Module):
     expansion = 1
 
@@ -67,7 +55,7 @@ class DecoderBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(working_planes)
         
         self.conv2 = nn.Sequential(
-                Interpolate(scale_factor=scale), 
+                nn.Upsample(scale_factor=scale), 
                 nn.Conv2d(working_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=True)
             )
         self.bn2 = nn.BatchNorm2d(out_planes)
@@ -175,7 +163,7 @@ class ResNetDecoder(nn.Module):
         self.linear = nn.Linear(latent_dim, self.current_planes * 4 * 4)
         
         # interpolate after linear layer using scale factor
-        self.upscale1 = Interpolate(size=input_height // 32)
+        self.upscale1 = nn.Upsample(size=input_height // 32)
 
         # Opposite Layer 5 -> 3
         self.conv_layer5 = self._make_layer(256, layers[0], scale=2)
@@ -186,7 +174,7 @@ class ResNetDecoder(nn.Module):
         self.conv_layer2 = self._make_layer(64, layers[3], scale=2)
         
         # Reverse 7x7 stride 2 downsampling
-        self.upscale = Interpolate(scale_factor=2)
+        self.upscale = nn.Upsample(scale_factor=2)
         self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=True)
 
         self.renorm = nn.Sigmoid()
@@ -195,7 +183,7 @@ class ResNetDecoder(nn.Module):
         upsample = None
         if scale != 1:
             upsample = nn.Sequential(
-                Interpolate(scale_factor=scale),
+                nn.Upsample(scale_factor=scale),
                 nn.Conv2d(self.current_planes, target_planes , kernel_size=1, stride=1),
                 nn.BatchNorm2d(target_planes),
             )
