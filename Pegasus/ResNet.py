@@ -294,31 +294,6 @@ class FCCResNetEncoder(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        '''
-        print(x.shape)
-        x = self.conv1(x)
-        print(x.shape)
-        x = self.bn1(x)
-        print(x.shape)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.maxpool(x)
-        print(x.shape)
-        x = self.conv_layer2(x)
-        print(x.shape)
-        x = self.conv_layer3(x)
-        print(x.shape)
-        x = self.conv_layer4(x)
-        print(x.shape)
-        x = self.conv_layer5(x)
-        print(x.shape)
-        x = self.avgpool(x)
-        print(x.shape)
-        
-        
-        print("After pool: %s"%str(x.shape))
-        '''
-        
         x = nn.Sequential(
             self.conv1,
             self.bn1,
@@ -341,29 +316,25 @@ class FCCResNetDecoder(nn.Module):
     Resnet in reverse order
     """
 
-    def __init__(self, layers, latent_dim, input_height):
+    def __init__(self, layers, latent_dim, out_img_size, fc_depth):
         super().__init__()
 
         self.current_planes = 512 # As per paper
-        self.input_height = input_height
 
-        # Linear layer to take us from latent to 4 x 4 x planes 
-        self.linear = nn.Linear(latent_dim, self.current_planes * 4 * 4) #4x4x512
-        
-        # interpolate after linear layer using scale factor
-        self.upscale1 = nn.Upsample(size=input_height // 32)
+        self.starting_size = out_img_size // 32 # We scale up to 32x starting size
+        self.fc_upscale = FCLayer(latent_dim, 512*self.starting_size*self.starting_size, fc_depth) # FC upscale to a size 
 
         # Opposite Layer 5 -> 3
-        self.conv_layer5 = self._make_layer(256, layers[0], scale=2) #8x8x256
-        self.conv_layer4 = self._make_layer(128, layers[1], scale=2) #16x16x128
-        self.conv_layer3 = self._make_layer(64, layers[2], scale=2) #32x32x64
+        self.conv_layer5 = self._make_layer(256, layers[0], scale=2) # 256 x 2x x 2x
+        self.conv_layer4 = self._make_layer(128, layers[1], scale=2) # 128 x 4x x 4x
+        self.conv_layer3 = self._make_layer(64, layers[2], scale=2) # 64 x 8x x 8x
 
         # Reverse second layer 3x3 stride 2
-        self.conv_layer2 = self._make_layer(64, layers[3], scale=2) #64x64x32
+        self.conv_layer2 = self._make_layer(64, layers[3], scale=2) # 32 x 16x x 16x
         
         # Reverse 7x7 stride 2 downsampling
         self.upscale = nn.Upsample(scale_factor=2)
-        self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=True) #128x128x16
+        self.conv1 = nn.Conv2d(64, 3, kernel_size=3, stride=1, padding=1, bias=True) # 16 x 32x x 32x 
 
         self.renorm = nn.Sigmoid()
 
@@ -386,26 +357,10 @@ class FCCResNetDecoder(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.linear(x)
-        x = x.view(x.size(0), 512, 4, 4)
-        print(x.shape)
-        x = self.upscale1(x)
-        print(x.shape)
-        x = self.conv_layer5(x)
-        print(x.shape)
-        x = self.conv_layer4(x)
-        print(x.shape)
-        x = self.conv_layer3(x)
-        print(x.shape)
-        x = self.conv_layer2(x)
-        print(x.shape)
-        x = self.upscale(x)
-        print(x.shape)
-        x = self.conv1(x)
-        print(x.shape)
-        x = self.renorm(x)
-        '''x = nn.Sequential(
-            self.upscale1,
+        x = self.fc_upscale(x)
+        x = x.view(x.size(0), 512, self.starting_size, self.starting_size)
+    
+        x = nn.Sequential(
             self.conv_layer5,
             self.conv_layer4,
             self.conv_layer3,
@@ -413,7 +368,7 @@ class FCCResNetDecoder(nn.Module):
             self.upscale,
             self.conv1,
             self.renorm,
-        )(x)'''
+        )(x)
         return x
 
 
@@ -423,5 +378,5 @@ def FCCResNet18Encoder(latent_size):
 
 
 def FCCResNet18Decoder(latent_size, img_size):
-    return FCCResNetDecoder([1, 2, 2, 1], latent_size, img_size)
+    return FCCResNetDecoder([1, 2, 2, 1], latent_size, img_size, 3)
 
