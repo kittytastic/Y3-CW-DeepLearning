@@ -19,3 +19,5 @@ https://github.com/aladdinpersson/Machine-Learning-Collection/blob/master/ML/Pyt
 https://orybkin.github.io/sigma-vae/
 https://ermongroup.github.io/blog/a-tutorial-on-mmd-variational-autoencoders/#kingma2013auto
 https://www.microsoft.com/en-us/research/blog/less-pain-more-gain-a-simple-method-for-vae-training-with-less-of-that-kl-vanishing-agony/
+
+https://arxiv.org/pdf/1905.02417.pdf
