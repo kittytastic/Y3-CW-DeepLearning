@@ -3,12 +3,13 @@ import pandas as pd
 import umap.plot
 import matplotlib.pyplot as plt
 import torchvision
+import numpy as np
 
 #######################################################
 #                     Latent space                    #
 #######################################################
 
-def PlotLatentSpace(model, point_count=1000):
+def PlotLatentSpace(model,  train_iterator, device, class_names, point_count=1000):
 
     acc_labels = None
     acc_vals = None
@@ -18,7 +19,7 @@ def PlotLatentSpace(model, point_count=1000):
         x,l = next(train_iterator)
         x,t = x.to(device), l.to(device)
 
-        z = model.full_encode(x).cpu()
+        z = model.encode(x).cpu()
 
         latent_space = z.detach().numpy()
         labels = np.array(l)
