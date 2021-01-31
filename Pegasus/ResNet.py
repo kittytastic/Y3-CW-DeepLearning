@@ -374,9 +374,9 @@ class FCCResNetDecoder(nn.Module):
 
         
 def FCCResNet18Encoder(latent_size):
-    return FCCResNetEncoder([1, 2, 2, 1], latent_size, 3)
+    return FCCResNetEncoder([2, 2, 2, 2], latent_size, 3)
 
 
 def FCCResNet18Decoder(latent_size, img_size):
-    return FCCResNetDecoder([1, 2, 2, 1], latent_size, img_size, 3)
+    return FCCResNetDecoder([2, 2, 2, 2], latent_size, img_size, 3)
 

@@ -32,8 +32,12 @@ import matplotlib.pyplot as plt
 batch_size  = 256
 latent_size = 32
 dataset = 'cifar10'
+#dataset = 'stl10'
 
 # %%
+import Utils
+#import importlib
+#importlib.reload(Utils)
 from Utils import *
 
 # %%
@@ -73,6 +77,7 @@ def cycle(iterable):
 if dataset == 'cifar10':
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download=True, transform=torchvision.transforms.Compose([
+            #torchvision.transforms.RandomHorizontalFlip(),
             torchvision.transforms.ToTensor(),
         ])),
         shuffle=True, batch_size=batch_size, drop_last=True
@@ -104,15 +109,16 @@ plotTensor(x)
 
 
 # %%
-def CheckpointModel(model, checkpoint_name, epoch):
-    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'epoch':epoch}, '%s.chkpt'%checkpoint_name)
+def CheckpointModel(model, checkpoint_name, epoch, loss):
+    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'epoch':epoch, 'loss':loss}, '%s.chkpt'%checkpoint_name)
 
 def RestoreModel(model, checkpoint_name):
     params = torch.load('%s.chkpt'%checkpoint_name)
     model.load_state_dict(params['model'])
     model.optimiser.load_state_dict(params['optimiser'])
     epoch = params['epoch']
-    return epoch
+    loss = params['loss']
+    return epoch, loss
 
 
 # %%
@@ -122,14 +128,14 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
 
     epoch_iter = trange(start_epoch, total_epoch)
     epoch_loss = []
-    t_kl = []
+    t_mmd = []
     t_recon = []
 
     for epoch in epoch_iter:
         
         iter_loss = np.zeros(0)
         loss_item = None
-        kl_item = None
+        mmd_item = None
         recon_item = None
         
 
@@ -139,26 +145,26 @@ def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
             x,t = x.to(device), t.to(device)
 
             # Step Model
-            loss = model.forwardStep(x)
+            loss, mmd_loss, recon_loss = model.forwardStep(x)
             model.backpropagate(loss)
             
             # Collect Stats
             loss_item = loss.detach().item()
-            #kl_item = kl_loss.detach().mean().cpu()
-            #recon_item = recon_loss.detach().mean().cpu()
+            mmd_item = mmd_loss.detach().mean().cpu()
+            recon_item = recon_loss.detach().mean().cpu()
 
             iter_loss = np.append(iter_loss, loss_item)
 
         
         
-        epoch_loss.append(iter_loss[-1])
-        #t_kl.append(kl_item)
-        #t_recon.append(recon_item)
+        epoch_loss.append(iter_loss.mean())
+        t_mmd.append(mmd_item)
+        t_recon.append(recon_item)
 
         # Print Status
         epoch_iter.set_description("Current Loss %.5f    Epoch" % loss_item)
 
-    return (epoch_loss, t_kl, t_recon)
+    return (epoch_loss, t_mmd, t_recon)
 
 
 # %%
@@ -168,22 +174,26 @@ def PlotRandomLatentSample(model, count=8):
 
 def PlotReconstructionAttempt(model):
     x,t = next(train_iterator)
-    x = x[0:8]
+    #x = x[0:8]
     x = x.to(device)
     x_hat = model.encode(x)
     x_hat = model.decode(x_hat)
+    x = x[0:8]
+    x_hat = x_hat[0:8]
     plotTensor(x_hat)
     plotTensor(x)
 
 def CompareByExample(model1, model2):
     x,t = next(train_iterator)
-    x = x[0:8]
+    #x = x[0:8]
     x = x.to(device)
-    _, _, _, x_hat_a = model1.trainingStep(x, t)
-    _, _, _, x_hat_b = model2.trainingStep(x, t)
-    plotTensor(x)
-    plotTensor(x_hat_a)
-    plotTensor(x_hat_b)
+    x_hat_a = model1.encode(x)
+    x_hat_a = model1.decode(x_hat_a)
+    x_hat_b = model2.encode(x)
+    x_hat_b = model2.decode(x_hat_b)
+    plotTensor(x[0:8])
+    plotTensor(x_hat_a[0:8])
+    plotTensor(x_hat_b[0:8])
 
 
 # %% [markdown] id="Qnjh12UbNFpV"
@@ -261,7 +271,7 @@ class VAE(nn.Module):
         nll = (x_hat - x).pow(2).mean()
         loss = nll + mmd
 
-        return loss
+        return loss, mmd, nll
 
 
 #print(f'> Number of VAE parameters {len(torch.nn.utils.parameters_to_vector(VAE().parameters()))}')
@@ -270,29 +280,44 @@ class VAE(nn.Module):
 # %% [markdown]
 # # Test Model
 
-# %% tags=[]
+# %%
 import ResNet
-#import importlib
-#importlib.reload(ResNet)
-from ResNet import resnet18_encoder, resnet18_decoder
+import importlib
+importlib.reload(ResNet)
+from ResNet import FCCResNet18Encoder, FCCResNet18Decoder
 
-vae_enc = resnet18_encoder()
-vae_dec = resnet18_decoder(
+
+vae_enc = FCCResNet18Encoder(latent_size)
+vae_dec = FCCResNet18Decoder(latent_size, image_size)
+Vfcres = VAE(vae_enc, vae_dec).to(device)
+all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 1320)
+PlotAllLoss([all_loss, mmd_loss, recon_loss], ["Loss", "MMD", "Recon"])
+PlotLoss(all_loss)
+
+# %%
+CheckpointModel(Vfcres, 'Vfcres-11hr', 1320, {'loss':all_loss, 'mmd':mmd_loss, 'recon':recon_loss})
+
+# %%
+PlotRandomLatentSample(Vfcres)
+
+# %%
+PlotReconstructionAttempt(Vfcres)
+
+# %%
+PlotLatentSpace(Vfcres, train_iterator, device, class_names)
+
+# %%
+import ResNet
+import importlib
+importlib.reload(ResNet)
+from ResNet import ResNet18Encoder, ResNet18Decoder
+
+vae_enc_old = ResNet18Encoder()
+vae_dec_old = ResNet18Decoder(
     latent_dim=latent_size,
     input_height=image_size
 )
-Vres = VAE(vae_enc, vae_dec).to(device)
-elo_loss, kl_loss, recon_loss = TrainModel(Vres, 5)
-PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
-PlotLoss(elo_loss)
-
-# %%
-PlotRandomLatentSample(Vres)
-
-# %%
-PlotReconstructionAttempt(Vres)
-
-# %%
-PlotLatentSpace(Vres)
-
-# %%
+Vres_old = VAE(vae_enc_old, vae_dec_old).to(device)
+#elo_loss, kl_loss, recon_loss = TrainModel(Vres, 0)
+#PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
+#PlotLoss(elo_loss)
