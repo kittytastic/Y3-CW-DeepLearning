@@ -306,21 +306,8 @@ PlotReconstructionAttempt(Vfcres)
 # %%
 PlotLatentSpace(Vfcres, train_iterator, device, class_names)
 
-# %%
-import ResNet
-import importlib
-importlib.reload(ResNet)
-from ResNet import ResNet18Encoder, ResNet18Decoder
 
-vae_enc_old = ResNet18Encoder()
-vae_dec_old = ResNet18Decoder(
-    latent_dim=latent_size,
-    input_height=image_size
-)
-Vres_old = VAE(vae_enc_old, vae_dec_old).to(device)
-#elo_loss, kl_loss, recon_loss = TrainModel(Vres, 0)
-#PlotAllLoss([elo_loss, kl_loss, recon_loss], ["EBLO", "KL", "Recon"])
-#PlotLoss(elo_loss)
+# %%
 
 # %%
 def HorseBirdTensors(count=batch_size):
@@ -386,6 +373,9 @@ def TryPegasus(model, width=8, rows=8):
     plotTensor(horses)
     plotTensor(birds)
 
+
+
+# %%
 TryPegasus(Vfcres)
 
 # %%
@@ -398,21 +388,9 @@ from Utils import *
 horses, birds = HorseBirdTensors(count=1000)
 planes = GetTensorOfClass('airplane', 1000)
 cats = GetTensorOfClass('cat', 1000)
+deers = GetTensorOfClass('deer', 1000)
+ships = GetTensorOfClass('ship', 1000)
 PlotCustomLatentSpace(Vfcres, [birds, cats], ['birds', 'cat'], latent_size, device)
-
-
-# %%
-def plotImageFrom(images, ds):
-    t = torch.zeros(len(images), image_channels, image_size, image_size, requires_grad=False)
-    for i in range(len(images)):
-        t[i] = ds[images[i]]
-    plotTensor(t)
-
-plotImageFrom([134, 424, 615, 819], birds)
-plotImageFrom([351, 789, 528, 81], birds)
-plotImageFrom([874, 661, 294, ], cats)
-
-plotImageFrom([612, 306, 737, 628], birds)
 
 
 # %%
@@ -446,68 +424,151 @@ def clusterClasses(model, data_classes, clusters):
         all_classes.append(classes)
     return all_classes
 
-def printImageFromCluster(data, clusters, cluster_i, max_plot=16):
+def tensorFromCluster(data, clusters, cluster_i):
     this_cluster = clusters[cluster_i]
     images = torch.zeros(len(this_cluster), image_channels, image_size, image_size, requires_grad=False)
     for i in range(len(this_cluster)):
         img_i = this_cluster[i]
         images[i] = data[img_i]
 
+    return images
 
+def printImageFromCluster(data, clusters, cluster_i, max_plot=16):
+    images = tensorFromCluster(data, clusters, cluster_i)
     plotTensor(images[0:min(len(images), max_plot)])
+    
 
 
+# %%
+classes = clusterClasses(Vfcres, [birds], 10)
+classes = classes[0]
+print(len(classes))
+for i in range(len(classes)):
+    printImageFromCluster(birds, classes, i, max_plot=24)
 
-def getIntersectingClasses(classes_a, classes_b, clusters, threshold=0.1):
+# %%
+test_ds = torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download=True, transform=torchvision.transforms.Compose([
+            #torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.ToTensor(),
+        ]))
 
-    intersecting = []
-    a_cluster = []
-    b_cluster = []
+# %%
+#good_birds = [16, 17, 184, 154, 153, 1, 2, 3]
+good_birds = [16, 17, 184, 154, 153]
+#good_horses = [228, 237, 292, 92, 1, 2, 3, 4]
+good_horses = [228, 237, 292, 92]
+
+def getImageofClass(img_ids, class_name):
+    if class_name not in class_names:
+        raise Exception("Class doesnt exist")
+
+    class_id = class_names.index(class_name)
+    good_images = torch.zeros(len(img_ids), image_channels, image_size, image_size, requires_grad=False)
+    gc = 0
+    class_i = 0
+    i=0
+    while gc<len(img_ids):
+        img, label = test_ds[i]
+        if label == class_id:
+            if class_i in img_ids: 
+                good_images[gc] = img
+                gc += 1
+            class_i += 1
+        i+=1
+
+
+    return good_images
+
+good_horse_imgs = getImageofClass(good_horses, 'horse')
+good_bird_imgs = getImageofClass(good_birds, 'bird')
+plotTensor(good_horse_imgs)
+plotTensor(good_bird_imgs)
+
+
+# %%
+def TryPegasus2(model, h, b, width=8, rows=8):
+    gpu_horses = h.to(device)
+    gpu_birds = b.to(device)
+    z_horses = model.encode(gpu_horses)
+    z_birds = model.encode(gpu_birds)
+    
+    
+    z_amalgum = torch.zeros(rows*width, latent_size)
+    for i in range(rows):
+        cm = width-1
+        for j in range(width):
+            z_amalgum[i*width+j] = z_horses[i]*j/cm + z_birds[i]*(1-j/cm)
+
+    z_amalgum = z_amalgum.to(device)
+    pegasus_decoded = model.decode(z_amalgum)
+    plotTensor(pegasus_decoded)
+
+    plotTensor(h[0:rows])
+    plotTensor(b)
+
+# %%
+TryPegasus2(Vfcres, good_horse_imgs, good_bird_imgs)
+
+
+# %%
+def PlotClassLike(like_this, from_this, clusters = 10):
+    as_classes = clusterClasses(Vfcres, [from_this, like_this], clusters)
+    print(as_classes[1])
     for i in range(clusters):
-        a = len(classes_a[i])
-        b = len(classes_b[i])
-        
-        diffrence = abs(a-b)
-        magnitude = abs(a+b)
+        if len(as_classes[1][i])>0:
+            printImageFromCluster(from_this, as_classes[0], i)
 
-        if diffrence/magnitude < threshold:
-            intersecting.append(i)
-        else:
-            if a>b:
-                a_cluster.append(i)
-            else:
-                b_cluster.append(i)
-
-    return intersecting, a_cluster, b_cluster
+def CreateSubsetLike(like_this, from_this, clusters = 10):
+    as_classes = clusterClasses(Vfcres, [from_this, like_this], clusters)
+    print(as_classes[1])
+    tensors_from_classes = []
+    for i in range(clusters):
+        if len(as_classes[1][i])>0:
+            tensors_from_classes.append(tensorFromCluster(from_this, as_classes[0], i))
+    return torch.cat(tensors_from_classes, dim=0)
     
 
+PlotClassLike(good_horse_imgs, horses)
+PlotClassLike(good_bird_imgs, birds)
+goodish_horses = CreateSubsetLike(good_horse_imgs, horses)
+goodish_birds = CreateSubsetLike(good_bird_imgs, birds)
+print(goodish_horses.shape)
+print(goodish_birds.shape)
 
 # %%
-def unionIntersection(model, data, cc):
-    a = data[0]
-    b = data[1]
-    data_in_clusters = clusterClasses(model, data, clusters=cc)
-    aAndb, aNotb, bNota = getIntersectingClasses(data_in_clusters[0], data_in_clusters[1], cc)
-    print(aAndb)
-    print(aNotb)
-    print(bNota)
+import random
+def TryPegasus3(model, h, b, width=8, rows=8):
+    ratio = 7
 
-    for cluster in aAndb:
-        printImageFromCluster(a, data_in_clusters[0], cluster,max_plot=8)
-        printImageFromCluster(b, data_in_clusters[1], cluster,max_plot=8)
+    gpu_horses = h.to(device)
+    gpu_birds = b.to(device)
+    z_horses = model.encode(gpu_horses)
+    z_birds = model.encode(gpu_birds)
 
-    print("-------------------------------")
-    print("-            A Not B          -")
-    print("-------------------------------")
-    for cluster in aNotb:
-        printImageFromCluster(a, data_in_clusters[0], cluster,max_plot=8)
+    h_rand_map = [random.randint(0, len(h)) for i in range(width*rows)]
+    b_rand_map = [random.randint(0, len(b)) for i in range(width*rows)]
     
-    print("-------------------------------")
-    print("-            B Not A          -")
-    print("-------------------------------")
-    for cluster in bNota:
-        printImageFromCluster(b, data_in_clusters[1], cluster,max_plot=8)
+    
+    z_amalgum = torch.zeros(rows*width, latent_size)
+    for i in range(rows):
+        for j in range(width):
+            p = i*width+j
+            z_amalgum[p] = z_horses[h_rand_map[p]]*(ratio/10) + z_birds[b_rand_map[p]]*(1-(ratio/10))
 
+    z_amalgum = z_amalgum.to(device)
+    pegasus_decoded = model.decode(z_amalgum)
+    plotTensor(pegasus_decoded)
+
+    return pegasus_decoded
+
+def plotBestPegasus(imgs, column, row):
+    i = column*8+row
+    plotTensor(imgs[i:i+1])
+    
+
+pegs = TryPegasus3(Vfcres, goodish_horses, goodish_birds)
 
 # %%
-unionIntersection(Vfcres, [birds, horses], 15)
+plotBestPegasus(pegs, 5,7)
+
+# %%
