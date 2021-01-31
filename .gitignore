@@ -11,3 +11,7 @@
 *.log
 *.pdf
 *.run.xml
+*.bbl
+*.blg
+*.out
+*.synctex.gz
