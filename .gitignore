@@ -3,3 +3,11 @@
 *.ipynb
 *.chkpt
 **/__pycache__/**
+
+*.aux
+*.bcf
+*.fdb_latexmk
+*.fls
+*.log
+*.pdf
+*.run.xml
