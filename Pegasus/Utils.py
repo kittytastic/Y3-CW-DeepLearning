@@ -41,7 +41,7 @@ def PlotLatentSpace(model,  train_iterator, device, class_names, point_count=100
     df['labels'] = df['labels'].map(dict((i, val) for i, val in enumerate(class_names)))
     umap.plot.points(mapper, labels=df["labels"])
 
-def PlotCustomLatentSpace(model, datasets, class_labels):
+def PlotCustomLatentSpace(model, datasets, class_labels, latent_size, device):
     full_df =  pd.DataFrame()
     data_df = pd.DataFrame()
     labels_df = pd.DataFrame()
@@ -54,7 +54,7 @@ def PlotCustomLatentSpace(model, datasets, class_labels):
         l = class_labels[i]
         ds, l = ds.to(device), l
 
-        z = model.full_encode(ds).detach().cpu().numpy()
+        z = model.encode(ds).detach().cpu().numpy()
         z = np.squeeze(z)
         data = np.concatenate((data, z), axis=0)
         labels+=[l]*len(ds)
