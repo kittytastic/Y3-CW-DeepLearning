@@ -308,8 +308,6 @@ PlotLatentSpace(Vfcres, train_iterator, device, class_names)
 
 
 # %%
-
-# %%
 def HorseBirdTensors(count=batch_size):
     hc = 0
     bc = 0
@@ -390,8 +388,7 @@ planes = GetTensorOfClass('airplane', 1000)
 cats = GetTensorOfClass('cat', 1000)
 deers = GetTensorOfClass('deer', 1000)
 ships = GetTensorOfClass('ship', 1000)
-PlotCustomLatentSpace(Vfcres, [birds, cats], ['birds', 'cat'], latent_size, device)
-
+#PlotCustomLatentSpace(Vfcres, [birds, cats], ['birds', 'cat'], latent_size, device)
 
 # %%
 def createClusterModel(data_class_latent, clusters):
@@ -440,22 +437,22 @@ def printImageFromCluster(data, clusters, cluster_i, max_plot=16):
 
 
 # %%
-classes = clusterClasses(Vfcres, [birds], 10)
-classes = classes[0]
-print(len(classes))
-for i in range(len(classes)):
-    printImageFromCluster(birds, classes, i, max_plot=24)
+def whatDoClassesLookLike(ds):
+    classes = clusterClasses(Vfcres, [ds], 10)
+    classes = classes[0]
+    for i in range(len(classes)):
+        printImageFromCluster(ds, classes, i, max_plot=16)
+whatDoClassesLookLike(birds)
 
 # %%
 test_ds = torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download=True, transform=torchvision.transforms.Compose([
-            #torchvision.transforms.RandomHorizontalFlip(),
             torchvision.transforms.ToTensor(),
         ]))
 
 # %%
-#good_birds = [16, 17, 184, 154, 153, 1, 2, 3]
-good_birds = [16, 17, 184, 154, 153]
-#good_horses = [228, 237, 292, 92, 1, 2, 3, 4]
+
+good_birds = [2, 16, 17, 154, 184, 200, 233]
+
 good_horses = [228, 237, 292, 92]
 
 def getImageofClass(img_ids, class_name):
@@ -507,7 +504,7 @@ def TryPegasus2(model, h, b, width=8, rows=8):
     plotTensor(b)
 
 # %%
-TryPegasus2(Vfcres, good_horse_imgs, good_bird_imgs)
+TryPegasus2(Vfcres, good_horse_imgs, good_bird_imgs, rows = min(len(good_bird_imgs), len(good_horse_imgs)))
 
 
 # %%
@@ -569,6 +566,6 @@ def plotBestPegasus(imgs, column, row):
 pegs = TryPegasus3(Vfcres, goodish_horses, goodish_birds)
 
 # %%
-plotBestPegasus(pegs, 5,7)
+plotBestPegasus(pegs, 7,5)
 
 # %%
