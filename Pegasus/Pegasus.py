@@ -124,12 +124,21 @@ def RestoreModel(model, checkpoint_name):
 # %%
 from tqdm import trange
 
-def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader)):
+def TrainModel(model, total_epoch, start_epoch=0, iter_count=len(train_loader), p_epoch_loss=None, p_mmd=None, p_recon=None):
 
     epoch_iter = trange(start_epoch, total_epoch)
+    
     epoch_loss = []
+    if p_epoch_loss:
+        epoch_loss = p_epoch_loss
+
     t_mmd = []
+    if p_mmd:
+        t_mmd = p_mmd
+
     t_recon = []
+    if p_recon:
+        t_recon = p_recon
 
     for epoch in epoch_iter:
         
@@ -284,18 +293,24 @@ class VAE(nn.Module):
 import ResNet
 import importlib
 importlib.reload(ResNet)
-from ResNet import FCCResNet18Encoder, FCCResNet18Decoder
+from ResNet import FCResNet18Encoder, FCResNet18Decoder
 
 
-vae_enc = FCCResNet18Encoder(latent_size)
-vae_dec = FCCResNet18Decoder(latent_size, image_size)
+vae_enc = FCResNet18Encoder(latent_size)
+vae_dec = FCResNet18Decoder(latent_size, image_size)
 Vfcres = VAE(vae_enc, vae_dec).to(device)
-all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 1320)
+epoch, loss = RestoreModel(Vfcres, 'Vfcres-11hr')
+all_loss = loss['loss']
+mmd_loss = loss['mmd']
+recon_loss = loss['recon']
+
+
+all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 1, p_epoch_loss=all_loss, p_mmd=mmd_loss, p_recon=recon_loss)
 PlotAllLoss([all_loss, mmd_loss, recon_loss], ["Loss", "MMD", "Recon"])
 PlotLoss(all_loss)
 
 # %%
-CheckpointModel(Vfcres, 'Vfcres-11hr', 1320, {'loss':all_loss, 'mmd':mmd_loss, 'recon':recon_loss})
+CheckpointModel(Vfcres, 'Vfcres-test', 1320, {'loss':all_loss, 'mmd':mmd_loss, 'recon':recon_loss})
 
 # %%
 PlotRandomLatentSample(Vfcres)
@@ -391,13 +406,11 @@ ships = GetTensorOfClass('ship', 1000)
 #PlotCustomLatentSpace(Vfcres, [birds, cats], ['birds', 'cat'], latent_size, device)
 
 # %%
-def createClusterModel(data_class_latent, clusters):
-    all_data = np.empty((0, latent_size))
-    
-    for latent in data_class_latent:
-        all_data = np.append(all_data, latent, axis=0)
+from sklearn.cluster import KMeans
 
-    kmeans = KMeans(n_clusters=clusters, random_state=0).fit(birds_encodeed)
+def createClusterModel(data_class_latent, clusters):
+    all_data = np.concatenate(data_class_latent, axis=0)
+    kmeans = KMeans(n_clusters=clusters, random_state=0).fit(all_data)
     return kmeans
 
 def clusterClasses(model, data_classes, clusters):
