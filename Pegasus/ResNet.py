@@ -93,6 +93,8 @@ class FCLayer(nn.Module):
     def __init__(self, in_dim, out_dim, depth):
         super().__init__()
 
+        self.relu = nn.ReLU(inplace=True)
+
         sf = out_dim/in_dim
         sf = sf**(1/float(depth))
         
@@ -101,6 +103,7 @@ class FCLayer(nn.Module):
         for i in range(depth-1):
             new_layers = int(current_layers*sf)
             layers.append(nn.Linear(current_layers, new_layers))
+            layers.append(self.relu)
             current_layers = new_layers
         
         layers.append(nn.Linear(current_layers, out_dim))
@@ -192,7 +195,8 @@ class FCResNetDecoder(nn.Module):
         self.current_planes = 512 # As per paper
 
         self.starting_size = out_img_size // 32 # We scale up to 32x starting size
-        self.fc_upscale = FCLayer(latent_dim, 512*self.starting_size*self.starting_size, fc_depth) # FC upscale to a size 
+        self.fc_upscale = FCLayer(latent_dim, 512*self.starting_size*self.starting_size, fc_depth) # FC upscale to a size
+        self.bn1 = nn.BatchNorm1d(512*self.starting_size*self.starting_size) 
 
         # Opposite Layer 5 -> 3
         self.conv_layer5 = self._make_layer(256, layers[0], scale=2) # 256 x 2x x 2x
@@ -228,6 +232,7 @@ class FCResNetDecoder(nn.Module):
 
     def forward(self, x):
         x = self.fc_upscale(x)
+        x = self.bn1(x)
         x = x.view(x.size(0), 512, self.starting_size, self.starting_size)
     
         x = nn.Sequential(
