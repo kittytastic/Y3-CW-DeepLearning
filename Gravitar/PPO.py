@@ -7,6 +7,17 @@ import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
 
+# Python 3.9.1 itemgetter op
+def itemgetter(*items):
+    if len(items) == 1:
+        item = items[0]
+        def g(obj):
+            return obj[item]
+    else:
+        def g(obj):
+            return tuple(obj[item] for item in items)
+    return g
+
 # Need an optimiser for actor critic
 class ActorCritic(nn.Module):
     def __init__(self, num_inputs, num_outputs, hidden_size, std=0.0):
@@ -78,9 +89,11 @@ def accrueExperience(env, actor_critic, steps=128):
         if done:
             env.reset()
 
-    # Get value again? Seems pointless -- unless we get final value
+    # We need one extra for GAE calculation
+    next_state = torch.FloatTensor(next_state)
+    next_value = actor_critic.getCriticFor(next_state)
 
-    return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'probs':probs, 'values':values}
+    return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'probs':probs, 'values':values}, next_value
 
 def proccessExperiences(next_value, raw_experience, gamma=0.99, tau=0.95):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
@@ -92,7 +105,7 @@ def proccessExperiences(next_value, raw_experience, gamma=0.99, tau=0.95):
     for step in reversed(range(len(rewards))):
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
-        returns.insert(0, gae + values[step])
+        retruns.insert(0, gae + values[step])
     
     return {**raw_experience, 'returns':retruns}
 
@@ -110,8 +123,8 @@ def teachActorCritic(actor_critic, experiences, epochs=10):
     
 
 
-env_name = 'Gravitar-ram-v0'
-#env_name = 'CartPole-v0'
+#env_name = 'Gravitar-ram-v0'
+env_name = 'CartPole-v0'
 env = gym.make(env_name)
 
 
@@ -123,5 +136,8 @@ print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 
 model = ActorCritic(num_inputs, num_outputs, 128)
 
-raw_experience = accrueExperience(env, model, 2)
+raw_experience, next_value = accrueExperience(env, model, 2)
+
+experience = proccessExperiences(next_value, raw_experience)
+#print(experience)
 #print(raw_experience)
