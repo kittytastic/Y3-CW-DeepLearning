@@ -36,47 +36,48 @@ class ActorCritic(nn.Module):
         # get critique for a certian state
         pass
 
+    def learn(self, stuff):
+        pass
+
 
     
 
 # Need an optimiser for actor critic
 
 
-def testReward(env):
+def testReward(env, actor_critic):
     total_reward = 0
     state = env.reset()
     done = False
     while not done:
-        # GET ACTION
-        action = "TODO"
-
+        action, _ = actor_critic.chooseAction(state)
         next_state, reward, done, _ = env.step(action)
         state = next_state
         total_reward += reward
 
-def accrueExperience(env, actor_critic, frames=128):
+def accrueExperience(env, actor_critic, steps=128):
 
     rewards = []
     states = []
     actions = []
     probs = []
-    dones = []
+    masks = []
     values = []
 
-    for e in range(frames):
+    for e in range(steps):
    
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCritic(state)
 
         next_state, reward, done, _ = env.step(action)
         
-        dones.append(done)
+        masks.append(int(not done)) # Used to mask out
         rewards.append(reward)
         states.append(state)
         actions.append(action)
         
         probs.append(action_distribution)
-        values.append(value)
+        values.append(estimated_value)
 
         state = next_state
         if done:
@@ -84,14 +85,32 @@ def accrueExperience(env, actor_critic, frames=128):
 
     # Get value again? Seems pointless -- unless we get final value
 
-    return {'done':dones, 'rewards':rewards, 'states':states, 'actions':actions, 'probs':probs}
+    return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'probs':probs, 'values':values}
 
-def proccessExperiences(raw_experience):
-    dones, rewards, states, actions, probs = itemgetter('done', 'rewards', 'states', 'actions', 'probs')(raw_experience)
+def proccessExperiences(next_value, raw_experience, gamma=0.99, tau=0.95):
+    masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
+    values += [next_value]
 
-    pass
+    # Calculate General advantage estimation and returns for each step
+    gae = 0
+    retruns = []
+    for step in reversed(range(len(rewards))):
+        delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
+        gae = delta + gamma * tau * masks[step] * gae
+        returns.insert(0, gae + values[step])
+    
+    return {**raw_experience, 'returns':retruns}
 
-def teachActorCritic(experiences, epochs=10):
+def miniBatchIter(mini_batch_size, mini_batch_count, experiences):
+    batch_size = len(experiences[experiences.keys()[0]])
+    for _ in range(mini_batch_count):
+        rand_ids = np.random.randint(0, batch_size, mini_batch_size)
+        yield {key: field[rand_ids, :] for key, field in experiences}
 
-    pass
+
+def teachActorCritic(actor_critic, experiences, epochs=10):
+
+    for e in range(epocs):
+        al, cl = actor_critic.learn(experiences)
+    
 
