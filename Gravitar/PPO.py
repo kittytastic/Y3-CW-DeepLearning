@@ -1,6 +1,13 @@
 import torch
 from torch import nn
+import gym
+import collections
+import random
+import numpy as np
+import torch.nn.functional as F
+import torch.optim as optim
 
+# Need an optimiser for actor critic
 class ActorCritic(nn.Module):
     def __init__(self, num_inputs, num_outputs, hidden_size, std=0.0):
         super(ActorCritic, self).__init__()
@@ -8,41 +15,28 @@ class ActorCritic(nn.Module):
         self.critic = nn.Sequential(
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1)
+            nn.Linear(hidden_size, 1),
         )
         
         self.actor = nn.Sequential(
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
+            nn.Softmax(dim=0),
         )
-        self.log_std = nn.Parameter(torch.ones(1, num_outputs) * std)
-        
-        self.apply(init_weights)
-        
-    def forward(self, x):
-        value = self.critic(x)
-        mu    = self.actor(x)
-        std   = self.log_std.exp().expand_as(mu)
-        dist  = Normal(mu, std)
-        return dist, value
+       
 
     def chooseAction(self, state):
-        # sample prob dist of state for next action
-        # return dist as well
-        pass
+        mu = self.actor(state)
+        dist = torch.distributions.Categorical(mu)
+        action = dist.sample()
+        return action, dist
 
-    def getCritic(self, state):
-        # get critique for a certian state
-        pass
+    def getCriticFor(self, state):
+        return self.critic(state)
 
     def learn(self, stuff):
         pass
-
-
-    
-
-# Need an optimiser for actor critic
 
 
 def testReward(env, actor_critic):
@@ -64,12 +58,13 @@ def accrueExperience(env, actor_critic, steps=128):
     masks = []
     values = []
 
+    state = env.reset()
     for e in range(steps):
-   
+        state = torch.FloatTensor(state)
         action, action_distribution = actor_critic.chooseAction(state)
-        estimated_value = actor_critic.getCritic(state)
+        estimated_value = actor_critic.getCriticFor(state)
 
-        next_state, reward, done, _ = env.step(action)
+        next_state, reward, done, _ = env.step(action.cpu().numpy())
         
         masks.append(int(not done)) # Used to mask out
         rewards.append(reward)
@@ -114,3 +109,19 @@ def teachActorCritic(actor_critic, experiences, epochs=10):
         al, cl = actor_critic.learn(experiences)
     
 
+
+env_name = 'Gravitar-ram-v0'
+#env_name = 'CartPole-v0'
+env = gym.make(env_name)
+
+
+assert(len(env.observation_space.shape)==1)
+
+num_inputs  = env.observation_space.shape[0]
+num_outputs = env.action_space.n
+print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
+
+model = ActorCritic(num_inputs, num_outputs, 128)
+
+raw_experience = accrueExperience(env, model, 2)
+#print(raw_experience)
