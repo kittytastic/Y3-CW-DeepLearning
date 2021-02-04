@@ -29,12 +29,32 @@ class ActorCritic(nn.Module):
             nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(num_inputs, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, 1),
         )
         
         self.actor = nn.Sequential(
             nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(num_inputs, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
             nn.Softmax(dim=0),
@@ -77,43 +97,44 @@ class ActorCritic(nn.Module):
                 self.optimizer.step()
 
 
-def testReward(env, actor_critic):
+def testReward(env, actor_critic, device):
     total_reward = 0
     state = env.reset()
     done = False
     while not done:
-        state = torch.FloatTensor(state)
+        state = torch.FloatTensor(state).to(device)
         action, _ = actor_critic.chooseAction(state)
-        next_state, reward, done, _ = env.step(action.cpu().numpy())
+        next_state, reward, done, _ = env.step(action.detach().cpu().numpy())
         state = next_state
         total_reward += reward
 
     return total_reward
 
-def accrueExperience(env, actor_critic, state_space_size, steps=None):
+def accrueExperience(env, actor_critic, state_space_size, device, steps=None):
 
-    rewards = torch.zeros(steps, requires_grad=False)
-    states = torch.zeros(steps, state_space_size, requires_grad=False)
-    actions = torch.zeros(steps, requires_grad=False)
-    probs = torch.zeros(steps, requires_grad=False)
-    masks = torch.zeros(steps, requires_grad=False)
-    values = torch.zeros(steps, requires_grad=False)
-    log_probs = torch.zeros(steps, requires_grad=False)
+    rewards = torch.zeros(steps, requires_grad=False, device=device)
+    states = torch.zeros(steps, state_space_size, requires_grad=False, device=device)
+    actions = torch.zeros(steps, requires_grad=False, device=device)
+    probs = torch.zeros(steps, requires_grad=False, device=device)
+    masks = torch.zeros(steps, requires_grad=False, device=device)
+    values = torch.zeros(steps, requires_grad=False, device=device)
+    log_probs = torch.zeros(steps, requires_grad=False, device=device)
 
     state = env.reset()
     for e in range(steps):
-        state = torch.FloatTensor(state)
+        state = torch.FloatTensor(state).to(device)
+        #printMeta(state, 'state')
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCriticFor(state)
 
-        next_state, reward, done, _ = env.step(action.cpu().numpy())
+        next_state, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
         log_probs[e] = (log_prob)       
-        masks[e] = (int(not done)) # Used to mask out
-        rewards[e] = (reward)
-        states[e] = (state)
-        actions[e] = (action)
+        masks[e] = int(not done) # Used to mask out
+        rewards[e] = reward
+        states[e] = state
+        actions[e] = action
         
         #probs[e] = (action_distribution)
         values[e] = (estimated_value)
@@ -123,12 +144,12 @@ def accrueExperience(env, actor_critic, state_space_size, steps=None):
             env.reset()
 
     # We need one extra for GAE calculation
-    next_state = torch.FloatTensor(next_state)
+    next_state = torch.FloatTensor(next_state).to(device)
     next_value = actor_critic.getCriticFor(next_state)
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
 
-def proccessExperiences(next_value, raw_experience, state_space_size, gamma=None, tau=None):
+def proccessExperiences(next_value, raw_experience, state_space_size, device, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
     #values = values + [next_value]
     values = torch.hstack((values, next_value))
@@ -136,7 +157,7 @@ def proccessExperiences(next_value, raw_experience, state_space_size, gamma=None
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
-    returns = torch.zeros(state_space_size, requires_grad=False)
+    returns = torch.zeros(state_space_size, requires_grad=False, device=device)
     for step in reversed(range(len(rewards))):
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
@@ -151,7 +172,36 @@ def miniBatchIter(mini_batch_size, experiences):
         rand_ids = np.random.randint(0, batch_size, mini_batch_size)
         yield {key: field[rand_ids] for key, field in experiences.items()}
 
-    
+def getDevice(force_cpu=False):
+    device = None
+    if force_cpu:
+        return torch.device('cpu')
+
+    targetGPU = "GeForce GTX 1080 Ti"
+
+    if torch.cuda.is_available():
+        targetDeviceNumber = None
+
+        print("There are %d available GPUs:"%torch.cuda.device_count())
+        for i in range(torch.cuda.device_count()):
+            prefix = "    "
+            if torch.cuda.get_device_name(i) == targetGPU:
+                targetDeviceNumber = i
+                prefix = "[🔥]"
+
+            print("%s %s"%(prefix, torch.cuda.get_device_name(i)))
+
+        if targetDeviceNumber != None:
+            device = torch.device('cuda:%d'%targetDeviceNumber)
+        else:
+            torch.device('cuda')
+            raise Exception("Cannot find target GPU")
+    else:
+        device = torch.device('cpu')
+        raise Exception("Not using GPU")
+
+    return device
+
 def plotScore(score, name):
     plt.plot(score)
     plt.ylabel("Score")
@@ -177,7 +227,7 @@ episodes = 100
 
 # Logging parameters
 video_every = 800
-test_interval = 800
+test_interval = 10
 test_batch_size = 5
 
 env_names = {
@@ -198,16 +248,17 @@ num_inputs  = env.observation_space.shape[0]
 num_outputs = env.action_space.n
 print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 
-model = ActorCritic(num_inputs, num_outputs, 128)
+device = getDevice(force_cpu=False)
+model = ActorCritic(num_inputs, num_outputs, 128).to(device)
 
 
 score = []
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
-    raw_experience, next_value = accrueExperience(env, model, num_inputs, steps=timesteps)
+    raw_experience, next_value = accrueExperience(env, model, num_inputs, device, steps=timesteps)
 
-    experience = proccessExperiences(next_value, raw_experience, num_inputs, gamma=discount_gamma, tau=GAE_tau)
+    experience = proccessExperiences(next_value, raw_experience, num_inputs, device, gamma=discount_gamma, tau=GAE_tau)
 
     #returns   = torch.cat(experience['returns']).detach()
     #print(returns)
@@ -238,7 +289,7 @@ for i in episode_iter:
         clip_epsilon=epsilon)
 
     if i % test_interval == 0:
-        score_batch = [testReward(env_test, model) for _ in range(test_batch_size)]
+        score_batch = [testReward(env_test, model, device) for _ in range(test_batch_size)]
         avg_score = np.mean(score_batch)
         score.append(avg_score)
         if i % (video_every*test_interval) == 0:
