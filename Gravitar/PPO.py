@@ -48,9 +48,7 @@ class ActorCritic(nn.Module):
     def getCriticFor(self, state):
         return self.critic(state)
 
-    def learn(self, epochs, experience, clip_epsilon=0.2, mini_batch_size=32):
-        
-        
+    def learn(self, epochs, experience, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None): 
         for _ in range(epochs):
             for mini_experience_batch in miniBatchIter(mini_batch_size, experience):
             
@@ -65,10 +63,10 @@ class ActorCritic(nn.Module):
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0-clip_epsilon, 1.0+clip_epsilon)*advantage
 
-                actor_loss = -torch.min(surr1, surr2).mean()
-                critic_loss = (retruns - value).pow(2).mean()
+                actor_loss = - torch.min(surr1, surr2).mean()
+                critic_loss = 0.5 * (retruns - value).pow(2).mean()
 
-                loss = 0.5 * critic_loss + actor_loss - 0.001 * entropy
+                loss =  vf_coeff * critic_loss + actor_loss - entropy_coeff * entropy
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -126,7 +124,7 @@ def accrueExperience(env, actor_critic, steps=128):
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
 
-def proccessExperiences(next_value, raw_experience, gamma=0.99, tau=0.95):
+def proccessExperiences(next_value, raw_experience, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
     values = values + [next_value]
 
@@ -146,23 +144,20 @@ def miniBatchIter(mini_batch_size, experiences):
         rand_ids = np.random.randint(0, batch_size, mini_batch_size)
         yield {key: field[rand_ids] for key, field in experiences.items()}
 
-
-def teachActorCritic(actor_critic, experiences, epochs=10):
-
-    for e in range(epocs):
-        al, cl = actor_critic.learn(experiences)
     
 
 
 discount_gamma = 0.99
 GAE_tau = 0.95
-epochs = 3
-timesteps = 128
+epochs = 10
+timesteps = 128 * 8
 mini_batch_size = 32
 entropy_coeff = 0.01
-
+vf_coeff = 1
+epsilon = 0.2
 
 video_every = 1
+
 env_name = 'Gravitar-ram-v0'
 #env_name = 'CartPole-v0'
 env_name = 'SpaceInvaders-ram-v0'
@@ -194,7 +189,11 @@ for i in range(1000):
     advantage = returns - values
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
-    model.learn(epochs, experience, mini_batch_size=mini_batch_size)
+    model.learn(epochs, experience, 
+        mini_batch_size=mini_batch_size,
+        entropy_coeff=entropy_coeff,
+        vf_coeff=vf_coeff,
+        clip_epsilon=epsilon)
 
     if i % 10 == 0:
         print(testReward(env_test, model))
