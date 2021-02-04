@@ -90,15 +90,15 @@ def testReward(env, actor_critic):
 
     return total_reward
 
-def accrueExperience(env, actor_critic, steps=128):
+def accrueExperience(env, actor_critic, state_space_size, steps=None):
 
-    rewards = []
-    states = []
-    actions = []
-    probs = []
-    masks = []
-    values = []
-    log_probs = []
+    rewards = torch.zeros(steps, requires_grad=False)
+    states = torch.zeros(steps, state_space_size, requires_grad=False)
+    actions = torch.zeros(steps, requires_grad=False)
+    probs = torch.zeros(steps, requires_grad=False)
+    masks = torch.zeros(steps, requires_grad=False)
+    values = torch.zeros(steps, requires_grad=False)
+    log_probs = torch.zeros(steps, requires_grad=False)
 
     state = env.reset()
     for e in range(steps):
@@ -109,14 +109,14 @@ def accrueExperience(env, actor_critic, steps=128):
         next_state, reward, done, _ = env.step(action.cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
-        log_probs.append(log_prob)       
-        masks.append(int(not done)) # Used to mask out
-        rewards.append(reward)
-        states.append(state)
-        actions.append(action)
+        log_probs[e] = (log_prob)       
+        masks[e] = (int(not done)) # Used to mask out
+        rewards[e] = (reward)
+        states[e] = (state)
+        actions[e] = (action)
         
-        probs.append(action_distribution)
-        values.append(estimated_value)
+        #probs[e] = (action_distribution)
+        values[e] = (estimated_value)
 
         state = next_state
         if done:
@@ -128,19 +128,22 @@ def accrueExperience(env, actor_critic, steps=128):
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
 
-def proccessExperiences(next_value, raw_experience, gamma=None, tau=None):
+def proccessExperiences(next_value, raw_experience, state_space_size, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
-    values = values + [next_value]
+    #values = values + [next_value]
+    values = torch.hstack((values, next_value))
+    #printMeta(values, 'long valuees')
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
-    retruns = []
+    returns = torch.zeros(state_space_size, requires_grad=False)
     for step in reversed(range(len(rewards))):
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
-        retruns.insert(0, gae + values[step])
+        #retruns.insert(0, gae + values[step])
+        returns[step] = gae + values[step]
     
-    return {**raw_experience, 'returns':retruns}
+    return {**raw_experience, 'returns':returns}
 
 def miniBatchIter(mini_batch_size, experiences):
     batch_size = len(experiences[list(experiences.keys())[0]])
@@ -155,6 +158,12 @@ def plotScore(score, name):
     plt.xlabel('Something')
     plt.savefig('%s.png'%name)
 
+def printMeta(tensor, name):
+    shape = str(tensor.shape)
+    device = str(tensor.device)
+    grad = str(tensor.requires_grad)
+    print("%s:  %s  %s  %s"%(name, shape, device, grad))
+
 # Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
@@ -164,7 +173,7 @@ mini_batch_size = 32
 entropy_coeff = 0.001
 vf_coeff = 1
 epsilon = 0.2
-episodes = 10000
+episodes = 100
 
 # Logging parameters
 video_every = 800
@@ -196,17 +205,30 @@ score = []
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
-    raw_experience, next_value = accrueExperience(env, model, steps=timesteps)
+    raw_experience, next_value = accrueExperience(env, model, num_inputs, steps=timesteps)
 
-    experience = proccessExperiences(next_value, raw_experience, gamma=discount_gamma, tau=GAE_tau)
+    experience = proccessExperiences(next_value, raw_experience, num_inputs, gamma=discount_gamma, tau=GAE_tau)
 
-    returns   = torch.cat(experience['returns']).detach()
-    log_probs = torch.Tensor(experience['log_probs']).detach()
-    values    = torch.Tensor(experience['values']).detach()
-    states = torch.Tensor()
-    states    = torch.cat(experience['states']).view(len(experience['states']), -1)
-    actions   = torch.Tensor(experience['actions'])
-    advantage = returns - values
+    #returns   = torch.cat(experience['returns']).detach()
+    #print(returns)
+    returns   = experience['returns'].detach()
+    #printMeta(returns, 'returns')
+    #log_probs = torch.Tensor(experience['log_probs']).detach()
+    log_probs = experience['log_probs'].detach()
+    #printMeta(log_probs, 'log_probs')
+    #values    = torch.Tensor(experience['values']).detach()
+    values    = experience['values'].detach()
+    #printMeta(values, 'values')
+    #states = torch.Tensor()
+    #states    = torch.cat(experience['states']).view(len(experience['states']), -1)
+    states    = experience['states']
+    #printMeta(states, 'states')
+    #actions   = torch.Tensor(experience['actions'])
+    actions   = experience['actions']
+    #printMeta(actions, 'actions')
+    #advantage = returns - values
+    advantage = torch.Tensor.detach(returns - values)
+    #printMeta(advantage, 'advantage')
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
     model.learn(epochs, experience, 
