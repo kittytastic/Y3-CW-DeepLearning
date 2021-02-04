@@ -48,11 +48,11 @@ class ActorCritic(nn.Module):
     def getCriticFor(self, state):
         return self.critic(state)
 
-    def learn(self, epochs, experience, clip_epsilon=0.2):
+    def learn(self, epochs, experience, clip_epsilon=0.2, mini_batch_size=32):
         
         
         for _ in range(epochs):
-            for mini_experience_batch in miniBatchIter(10, experience):
+            for mini_experience_batch in miniBatchIter(mini_batch_size, experience):
             
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
                 
@@ -154,6 +154,13 @@ def teachActorCritic(actor_critic, experiences, epochs=10):
     
 
 
+discount_gamma = 0.99
+GAE_tau = 0.95
+epochs = 3
+timesteps = 128
+mini_batch_size = 32
+entropy_coeff = 0.01
+
 
 video_every = 1
 env_name = 'Gravitar-ram-v0'
@@ -174,9 +181,9 @@ print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 model = ActorCritic(num_inputs, num_outputs, 128)
 
 for i in range(1000):
-    raw_experience, next_value = accrueExperience(env, model, 128)
+    raw_experience, next_value = accrueExperience(env, model, steps=timesteps)
 
-    experience = proccessExperiences(next_value, raw_experience)
+    experience = proccessExperiences(next_value, raw_experience, gamma=discount_gamma, tau=GAE_tau)
 
     returns   = torch.cat(experience['returns']).detach()
     log_probs = torch.Tensor(experience['log_probs']).detach()
@@ -187,7 +194,7 @@ for i in range(1000):
     advantage = returns - values
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
-    model.learn(10, experience)
+    model.learn(epochs, experience, mini_batch_size=mini_batch_size)
 
     if i % 10 == 0:
         print(testReward(env_test, model))
