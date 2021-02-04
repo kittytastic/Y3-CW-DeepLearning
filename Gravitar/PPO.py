@@ -31,28 +31,12 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(num_inputs, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, 1),
         )
         
         self.actor = nn.Sequential(
             nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(num_inputs, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
@@ -97,37 +81,70 @@ class ActorCritic(nn.Module):
                 self.optimizer.step()
 
 
-def testReward(env, actor_critic, device):
+def testReward(env, actor_critic, device, state_space_size, frame_stack_depth):
     total_reward = 0
     state = env.reset()
     done = False
+
+    frame_stack = FrameStack(frame_stack_depth, state_space_size, device)
+    state = torch.FloatTensor(state).to(device)
+    frame_stack.setFirstFrame(state)
+    
     while not done:
-        state = torch.FloatTensor(state).to(device)
+        state = frame_stack.asState()
         action, _ = actor_critic.chooseAction(state)
-        next_state, reward, done, _ = env.step(action.detach().cpu().numpy())
-        state = next_state
+        next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        next_frame = torch.FloatTensor(next_frame).to(device)
+        frame_stack.pushFrame(next_frame)
         total_reward += reward
 
     return total_reward
 
-def accrueExperience(env, actor_critic, state_space_size, device, steps=None):
+
+class FrameStack():
+    def __init__(self, size, frame_size, device):
+        self.size = size
+        self.stack = torch.zeros((size, frame_size), device=device, requires_grad=False)
+
+    def pushFrame(self, frame):
+        #printMeta(frame, 'og frame')
+        new_frame = frame.unsqueeze(0)
+        #printMeta(new_frame, 'new frame')
+        #printMeta(self.stack[1:], 'stack')
+        self.stack =  torch.cat((self.stack[1:], new_frame))
+
+    def setFirstFrame(self, frame):
+        self.stack = frame.repeat(self.size, 1)
+    
+    def getTrueState(self):
+        return self.stack
+
+    def asState(self):
+        return self.stack.flatten()
+
+def accrueExperience(env, actor_critic, state_space_size, frame_stack_depth, device, steps=None):
 
     rewards = torch.zeros(steps, requires_grad=False, device=device)
-    states = torch.zeros(steps, state_space_size, requires_grad=False, device=device)
+    states = torch.zeros(steps, state_space_size*frame_stack_depth, requires_grad=False, device=device)
     actions = torch.zeros(steps, requires_grad=False, device=device)
     probs = torch.zeros(steps, requires_grad=False, device=device)
     masks = torch.zeros(steps, requires_grad=False, device=device)
     values = torch.zeros(steps, requires_grad=False, device=device)
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
+    
+    frame_stack = FrameStack(frame_stack_depth, state_space_size, device)
 
     state = env.reset()
+    state = torch.FloatTensor(state).to(device)
+    frame_stack.setFirstFrame(state)
     for e in range(steps):
-        state = torch.FloatTensor(state).to(device)
+        state = frame_stack.asState()
+        #state = torch.FloatTensor(state).to(device)
         #printMeta(state, 'state')
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCriticFor(state)
 
-        next_state, reward, done, _ = env.step(action.detach().cpu().numpy())
+        next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
         log_probs[e] = (log_prob)       
@@ -139,13 +156,16 @@ def accrueExperience(env, actor_critic, state_space_size, device, steps=None):
         #probs[e] = (action_distribution)
         values[e] = (estimated_value)
 
-        state = next_state
+        #state = next_state
+        next_frame = torch.FloatTensor(next_frame).to(device)
+        frame_stack.pushFrame(next_frame)
         if done:
+            frame_stack.setFirstFrame(next_frame)
             env.reset()
 
     # We need one extra for GAE calculation
-    next_state = torch.FloatTensor(next_state).to(device)
-    next_value = actor_critic.getCriticFor(next_state)
+    #next_state = torch.FloatTensor(next_state).to(device)
+    next_value = actor_critic.getCriticFor(frame_stack.asState())
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
 
@@ -217,18 +237,19 @@ def printMeta(tensor, name):
 # Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
-epochs = 20
+epochs = 5
 timesteps = 128 
 mini_batch_size = 32
-entropy_coeff = 0.001
+entropy_coeff = 0.01
 vf_coeff = 1
 epsilon = 0.2
-episodes = 100
+episodes = 4000
+frame_stack_depth = 5
 
 # Logging parameters
-video_every = 800
-test_interval = 10
-test_batch_size = 5
+video_every = 4
+test_interval = 50
+test_batch_size = 3
 
 env_names = {
     'gravitar': 'Gravitar-ram-v0',
@@ -239,7 +260,7 @@ env_names = {
 env_name = env_names['spaceInvaders']
 env = gym.make(env_name)
 env_test = gym.make(env_name)
-#env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
+env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
 assert(len(env.observation_space.shape)==1)
@@ -248,15 +269,16 @@ num_inputs  = env.observation_space.shape[0]
 num_outputs = env.action_space.n
 print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 
-device = getDevice(force_cpu=False)
-model = ActorCritic(num_inputs, num_outputs, 128).to(device)
+device = getDevice(force_cpu=True)
+
+model = ActorCritic(num_inputs*frame_stack_depth, num_outputs, 128).to(device)
 
 
 score = []
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
-    raw_experience, next_value = accrueExperience(env, model, num_inputs, device, steps=timesteps)
+    raw_experience, next_value = accrueExperience(env, model, num_inputs, frame_stack_depth, device, steps=timesteps)
 
     experience = proccessExperiences(next_value, raw_experience, num_inputs, device, gamma=discount_gamma, tau=GAE_tau)
 
@@ -289,7 +311,7 @@ for i in episode_iter:
         clip_epsilon=epsilon)
 
     if i % test_interval == 0:
-        score_batch = [testReward(env_test, model, device) for _ in range(test_batch_size)]
+        score_batch = [testReward(env_test, model, device, num_inputs, frame_stack_depth) for _ in range(test_batch_size)]
         avg_score = np.mean(score_batch)
         score.append(avg_score)
         if i % (video_every*test_interval) == 0:
