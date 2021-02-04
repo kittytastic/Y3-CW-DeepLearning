@@ -20,18 +20,20 @@ def itemgetter(*items):
             return tuple(obj[item] for item in items)
     return g
 
-# Need an optimiser for actor critic
+
 class ActorCritic(nn.Module):
     def __init__(self, num_inputs, num_outputs, hidden_size, std=0.0, lr=3e-4):
         super(ActorCritic, self).__init__()
         
         self.critic = nn.Sequential(
+            nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 1),
         )
         
         self.actor = nn.Sequential(
+            nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
@@ -153,28 +155,32 @@ def plotScore(score, name):
     plt.xlabel('Something')
     plt.savefig('%s.png'%name)
 
+# Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
-epochs = 10
+epochs = 20
 timesteps = 128 
 mini_batch_size = 32
 entropy_coeff = 0.001
 vf_coeff = 1
 epsilon = 0.2
+episodes = 10000
 
-
-video_every = 5
-test_interval = 10
-episodes = 500
-
+# Logging parameters
+video_every = 800
+test_interval = 800
 test_batch_size = 5
 
-env_name = 'Gravitar-ram-v0'
-env_name = 'CartPole-v0'
-env_name = 'SpaceInvaders-ram-v0'
+env_names = {
+    'gravitar': 'Gravitar-ram-v0',
+    'cartpole': 'CartPole-v0',
+    'spaceInvaders': 'SpaceInvaders-ram-v0',
+    }
+
+env_name = env_names['spaceInvaders']
 env = gym.make(env_name)
 env_test = gym.make(env_name)
-env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
+#env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
 assert(len(env.observation_space.shape)==1)
@@ -214,9 +220,8 @@ for i in episode_iter:
         avg_score = np.mean(score_batch)
         score.append(avg_score)
         if i % (video_every*test_interval) == 0:
-            #plotScore(score, 'score')
-            pass
+            plotScore(score, 'score')
         episode_iter.set_description("Current Score %.1f  " % avg_score)
 
 
-plotScore(score)
+plotScore(score, 'score')
