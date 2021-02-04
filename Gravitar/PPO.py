@@ -6,6 +6,8 @@ import random
 import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
+import matplotlib.pyplot as plt
+from tqdm import trange
 
 # Python 3.9.1 itemgetter op
 def itemgetter(*items):
@@ -145,26 +147,34 @@ def miniBatchIter(mini_batch_size, experiences):
         yield {key: field[rand_ids] for key, field in experiences.items()}
 
     
-
+def plotScore(score, name):
+    plt.plot(score)
+    plt.ylabel("Score")
+    plt.xlabel('Something')
+    plt.savefig('%s.png'%name)
 
 discount_gamma = 0.99
 GAE_tau = 0.95
 epochs = 10
-timesteps = 128 * 8
+timesteps = 128 
 mini_batch_size = 32
-entropy_coeff = 0.01
+entropy_coeff = 0.001
 vf_coeff = 1
 epsilon = 0.2
 
-video_every = 1
+
+video_every = 5
+test_interval = 10
+episodes = 500
+
+test_batch_size = 5
 
 env_name = 'Gravitar-ram-v0'
-#env_name = 'CartPole-v0'
+env_name = 'CartPole-v0'
 env_name = 'SpaceInvaders-ram-v0'
 env = gym.make(env_name)
 env_test = gym.make(env_name)
-#env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%video_every)==0, force=True)
-env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%video_every)==0, force=True)
+env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
 assert(len(env.observation_space.shape)==1)
@@ -175,7 +185,11 @@ print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 
 model = ActorCritic(num_inputs, num_outputs, 128)
 
-for i in range(1000):
+
+score = []
+
+episode_iter = trange(0, episodes)
+for i in episode_iter:
     raw_experience, next_value = accrueExperience(env, model, steps=timesteps)
 
     experience = proccessExperiences(next_value, raw_experience, gamma=discount_gamma, tau=GAE_tau)
@@ -195,5 +209,14 @@ for i in range(1000):
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon)
 
-    if i % 10 == 0:
-        print(testReward(env_test, model))
+    if i % test_interval == 0:
+        score_batch = [testReward(env_test, model) for _ in range(test_batch_size)]
+        avg_score = np.mean(score_batch)
+        score.append(avg_score)
+        if i % (video_every*test_interval) == 0:
+            #plotScore(score, 'score')
+            pass
+        episode_iter.set_description("Current Score %.1f  " % avg_score)
+
+
+plotScore(score)
