@@ -22,13 +22,20 @@ def itemgetter(*items):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, num_inputs, num_outputs, hidden_size, std=0.0, lr=3e-4):
+    def __init__(self, num_inputs, num_outputs, hidden_size, lr=3e-4):
         super(ActorCritic, self).__init__()
         
         self.critic = nn.Sequential(
             nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 1),
@@ -38,6 +45,13 @@ class ActorCritic(nn.Module):
             nn.Sigmoid(),
             nn.Linear(num_inputs, hidden_size),
             nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
@@ -139,45 +153,43 @@ def accrueExperience(env, actor_critic, state_space_size, frame_stack_depth, dev
     frame_stack.setFirstFrame(state)
     for e in range(steps):
         state = frame_stack.asState()
-        #state = torch.FloatTensor(state).to(device)
-        #printMeta(state, 'state')
+
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCriticFor(state)
 
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
-        log_probs[e] = (log_prob)       
+        log_probs[e] = log_prob     
         masks[e] = int(not done) # Used to mask out
         rewards[e] = reward
         states[e] = state
         actions[e] = action
-        
-        #probs[e] = (action_distribution)
-        values[e] = (estimated_value)
+        values[e] = estimated_value
 
-        #state = next_state
         next_frame = torch.FloatTensor(next_frame).to(device)
         frame_stack.pushFrame(next_frame)
+        
         if done:
+            next_frame = env.reset()
+            next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.setFirstFrame(next_frame)
-            env.reset()
 
-    # We need one extra for GAE calculation
-    #next_state = torch.FloatTensor(next_state).to(device)
+
+    # We need one extra value for GAE calculation
     next_value = actor_critic.getCriticFor(frame_stack.asState())
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
 
-def proccessExperiences(next_value, raw_experience, state_space_size, device, gamma=None, tau=None):
+def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
-    #values = values + [next_value]
+    
     values = torch.hstack((values, next_value))
     #printMeta(values, 'long valuees')
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
-    returns = torch.zeros(state_space_size, requires_grad=False, device=device)
+    returns = torch.zeros(steps, requires_grad=False, device=device)
     for step in reversed(range(len(rewards))):
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
@@ -237,18 +249,23 @@ def printMeta(tensor, name):
 # Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
-epochs = 5
-timesteps = 128 
+
+
 mini_batch_size = 32
 entropy_coeff = 0.01
 vf_coeff = 1
 epsilon = 0.2
-episodes = 4000
-frame_stack_depth = 5
+
+learning_rate = 1e-3
+
+epochs = 10
+episodes = 100
+timesteps = 256 
+frame_stack_depth = 10
 
 # Logging parameters
 video_every = 4
-test_interval = 50
+test_interval = 10
 test_batch_size = 3
 
 env_names = {
@@ -257,7 +274,7 @@ env_names = {
     'spaceInvaders': 'SpaceInvaders-ram-v0',
     }
 
-env_name = env_names['spaceInvaders']
+env_name = env_names['cartpole']
 env = gym.make(env_name)
 env_test = gym.make(env_name)
 env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
@@ -271,7 +288,7 @@ print("inputs: %d   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 
 device = getDevice(force_cpu=True)
 
-model = ActorCritic(num_inputs*frame_stack_depth, num_outputs, 128).to(device)
+model = ActorCritic(num_inputs*frame_stack_depth, num_outputs, 128, lr=learning_rate).to(device)
 
 
 score = []
@@ -280,7 +297,7 @@ episode_iter = trange(0, episodes)
 for i in episode_iter:
     raw_experience, next_value = accrueExperience(env, model, num_inputs, frame_stack_depth, device, steps=timesteps)
 
-    experience = proccessExperiences(next_value, raw_experience, num_inputs, device, gamma=discount_gamma, tau=GAE_tau)
+    experience = proccessExperiences(next_value, raw_experience, timesteps, device, gamma=discount_gamma, tau=GAE_tau)
 
     #returns   = torch.cat(experience['returns']).detach()
     #print(returns)
