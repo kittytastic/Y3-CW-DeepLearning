@@ -263,7 +263,15 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
     
     values = torch.hstack((values, next_value))
-    #printMeta(values, 'long valuees')
+   
+    scores = []
+    running_score = 0
+    for i in range(len(rewards)):
+        running_score += rewards[i]
+        if masks[i]==0.0:
+            scores.append(running_score.detach().cpu().numpy())
+            running_score = 0
+   
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
@@ -274,7 +282,7 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
         #retruns.insert(0, gae + values[step])
         returns[step] = gae + values[step]
     
-    return {**raw_experience, 'returns':returns}
+    return {**raw_experience, 'returns':returns, 'scores': scores}
 
 def miniBatchIter(mini_batch_size, experiences):
     batch_size = len(experiences[list(experiences.keys())[0]])
@@ -334,27 +342,27 @@ entropy_coeff = 0.01
 vf_coeff = 1
 epsilon = 0.2
 
-learning_rate = 1e-3
+learning_rate = 3e-4
 
-epochs = 10
-episodes = 100
-timesteps = 256 
+epochs = 5
+episodes = 2
+timesteps = 2048 
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 4
+video_every = 1
 test_interval = 10
-test_batch_size = 3
+test_batch_size = 1
 
 env_names = {
     'gravitar': 'Gravitar-v0',
-    'cartpole': 'CartPole-v0',
     'spaceInvaders': 'SpaceInvaders-v0',
     'breakout': 'Breakout-v0',
     }
 
 env_name = env_names['breakout']
 env = gym.make(env_name)
+#env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%1)==0, force=True)
 env_test = gym.make(env_name)
 env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
@@ -391,13 +399,18 @@ device = getDevice(force_cpu=False)
 model = ActorCritic(frame_stack_depth, num_outputs, 128, lr=learning_rate).to(device)
 
 
-score = []
+score_over_time = []
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
     raw_experience, next_value = accrueExperience(env, model, frame_stack_depth, device, steps=timesteps)
 
     experience = proccessExperiences(next_value, raw_experience, timesteps, device, gamma=discount_gamma, tau=GAE_tau)
+    scores = np.array(experience['scores'])
+    #print(scores)
+    avg_score = scores.mean()
+    episode_iter.set_description("Current Score %.1f  (%d games)" % (avg_score, len(scores)))
+    
 
     #returns   = torch.cat(experience['returns']).detach()
     #print(returns)
@@ -427,13 +440,15 @@ for i in episode_iter:
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon)
 
+
+    
     if i % test_interval == 0:
         score_batch = [testReward(env_test, model, device, frame_stack_depth) for _ in range(test_batch_size)]
-        avg_score = np.mean(score_batch)
-        score.append(avg_score)
+        #avg_score = np.mean(score_batch)
+        #score.append(avg_score)
         if i % (video_every*test_interval) == 0:
-            plotScore(score, 'score')
-        episode_iter.set_description("Current Score %.1f  " % avg_score)
+            plotScore(scores, 'score')
+        #episode_iter.set_description("Current Score %.1f  " % avg_score)
+    
 
-
-plotScore(score, 'score')
+plotScore(scores, 'score')
