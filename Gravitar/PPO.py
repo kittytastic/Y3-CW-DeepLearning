@@ -98,35 +98,21 @@ class ActorCritic(nn.Module):
     def __init__(self, frame_stack, num_outputs, hidden_size, lr=3e-4):
         super(ActorCritic, self).__init__()
 
-        self.frame_to_state=ConvFrames(frame_stack)
-     
+        self.conv_output_size = neurons_per_frame*frame_stack
         
-        self.first_layer_size = neurons_per_frame*frame_stack
         self.critic = nn.Sequential(
-            nn.Linear(self.first_layer_size, hidden_size),
+            ConvFrames(frame_stack),
+            nn.Linear(self.conv_output_size, hidden_size),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 1),
         )
         
         self.actor = nn.Sequential(
-            nn.Linear(self.first_layer_size, hidden_size),
+            ConvFrames(frame_stack),
+            nn.Linear(self.conv_output_size, hidden_size),
             nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
@@ -137,15 +123,13 @@ class ActorCritic(nn.Module):
        
 
     def chooseAction(self, frames, p=False):
-        state     = self.frame_to_state(frames)
-        actor_ops = self.actor(state)
+        actor_ops = self.actor(frames)
         dist      = torch.distributions.Categorical(actor_ops)
         action    = dist.sample()
         return action, dist
 
     def getCriticFor(self, frames):
-        state = self.frame_to_state(frames)
-        return self.critic(state)
+        return self.critic(frames)
 
     def learn(self, epochs, experience, device, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None): 
         loss_acc = torch.zeros(1, device=device, requires_grad=False)
@@ -394,8 +378,8 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 1
-timesteps = 128 
+episodes = 60
+timesteps = 1024 
 frame_stack_depth = 4
 
 # Logging parameters
@@ -413,7 +397,7 @@ env_names = {
     'breakout': 'Breakout-v0',
     }
 
-env_name = env_names['gravitar']
+env_name = env_names['breakout']
 env = gym.make(env_name)
 #env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%1)==0, force=True)
 env_test = gym.make(env_name)
