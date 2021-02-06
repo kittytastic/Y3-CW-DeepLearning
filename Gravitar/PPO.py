@@ -25,35 +25,44 @@ def itemgetter(*items):
 class TransformFrame(nn.Module):
     def __init__(self):
         super(TransformFrame, self).__init__()
-        
 
     def forward(self, x):
-        x = x[:200, :160]
-        #printMeta(x, 'linear')
+        x = x[20:200, :160]
         grey_image = x.mean(dim=2)
-        return grey_image
+        grey_image = grey_image.unsqueeze(0)
+        smaller = torchvision.transforms.functional.resize(grey_image, size=(80,80))
+        return smaller.squeeze()
 
+class FrameStack():
+    def __init__(self, depth, device):
+        self.depth = depth
+        self.device = device
+        self.stack = None
+        self.frame_transformer = TransformFrame()
 
-class ConvFrames(nn.Module):
-    def __init__(self, frames):
-        super(ConvFrames, self).__init__()
-        self.downsample = nn.MaxPool2d(kernel_size=(2,2), stride=2) # -> 4 x 100 x 80
+        self.h = 80
+        self.w= 80
 
-        self.conv1 = Block(frames, frames*2, 2, 0) # -> 8 x 48 x 38
-        self.conv2 = Block(frames*2, frames*4, 2, 0) # -> 8 x 25 x 20
-        self.conv3 = Block(frames*4, frames*8, 2, 0)
+    def pushFrame(self, frame):
+        frame_tensor = torch.FloatTensor(frame).to(self.device)
+        #printMeta(frame, 'og frame')
+        new_frame = self.frame_transformer(frame_tensor)
+        #printMeta(new_frame, 'transformed')
+        new_frame = new_frame.unsqueeze(0)
+        #printMeta(new_frame, 'new frame')
+        #printMeta(self.stack[1:], 'stack')
+        self.stack =  torch.cat((self.stack[1:], new_frame))
 
-    def forward(self, x):
-        x = self.downsample(x)
-        #printMeta(x, 'down')
-        x = self.conv1(x)
-        #printMeta(x, 'con1')
-        x = self.conv2(x)
-        #printMeta(x, 'conv2')
-        x = self.conv3(x)
-        #printMeta(x, 'conv3')
-        x = x.flatten(1)
-        return x
+    def setFirstFrame(self, frame):
+        frame_tensor = torch.FloatTensor(frame).to(self.device)
+        new_frame = self.frame_transformer(frame_tensor)
+        self.stack = new_frame.repeat(self.depth, 1, 1)
+    
+    def getTrueState(self):
+        return self.stack
+
+    def asState(self):
+        return self.stack.unsqueeze(0)
 
 
 class Block(nn.Module):
@@ -67,18 +76,32 @@ class Block(nn.Module):
     def forward(self,x):
         return self.f(x)
 
+class ConvFrames(nn.Module):
+    def __init__(self, frames):
+        super(ConvFrames, self).__init__()
+        # <- 4 x 80 x 80
+        self.conv1 = Block(frames, frames*2, 2, 0) # -> 8 x 39 x 39
+        self.conv2 = Block(frames*2, frames*4, 2, 0) # -> 16 x 19 x 19
+        self.conv3 = Block(frames*4, frames*8, 2, 0) # -> 32 x 9 x 9
+
+    def forward(self, x):
+        x = self.conv1(x)
+        #printMeta(x, 'con1')
+        x = self.conv2(x)
+        #printMeta(x, 'conv2')
+        x = self.conv3(x)
+        #printMeta(x, 'conv3')
+        x = x.flatten(1)
+        return x
+
 class ActorCritic(nn.Module):
     def __init__(self, frame_stack, num_outputs, hidden_size, lr=3e-4):
         super(ActorCritic, self).__init__()
 
         self.frame_to_state=ConvFrames(frame_stack)
-        #self.frames_to_state(
-        #    Block(),
-        #    Block(),
-        #    Block(),
-        #)
+     
         
-        self.first_layer_size = 792*frame_stack
+        self.first_layer_size = neurons_per_frame*frame_stack
         self.critic = nn.Sequential(
             nn.Linear(self.first_layer_size, hidden_size),
             nn.ReLU(),
@@ -114,14 +137,10 @@ class ActorCritic(nn.Module):
        
 
     def chooseAction(self, frames, p=False):
-        if p:
-            printMeta(frames, 'frames')
-        state = self.frame_to_state(frames)
-        if p:
-            printMeta(state, 'state')
-        mu = self.actor(state)
-        dist = torch.distributions.Categorical(mu)
-        action = dist.sample()
+        state     = self.frame_to_state(frames)
+        actor_ops = self.actor(state)
+        dist      = torch.distributions.Categorical(actor_ops)
+        action    = dist.sample()
         return action, dist
 
     def getCriticFor(self, frames):
@@ -139,7 +158,6 @@ class ActorCritic(nn.Module):
             
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
                 
-                #printMeta(state, 'State in learn')
                 _, dist = self.chooseAction(state, p=False)
                 value = self.getCriticFor(state)
                 entropy = dist.entropy().mean()
@@ -176,8 +194,8 @@ def testReward(env, actor_critic, device, frame_stack_depth):
     state = env.reset()
     done = False
 
-    frame_stack = FrameStack(frame_stack_depth)
-    state = torch.FloatTensor(state).to(device)
+    frame_stack = FrameStack(frame_stack_depth, device)
+    #state = torch.FloatTensor(state).to(device)
     frame_stack.setFirstFrame(state)
     every_kth_frame = 4
     current_frame = 0
@@ -191,51 +209,27 @@ def testReward(env, actor_critic, device, frame_stack_depth):
         current_frame += 1
         if current_frame == every_kth_frame:
             current_frame = 0
-            next_frame = torch.FloatTensor(next_frame).to(device)
+            #next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.pushFrame(next_frame)
 
     return total_reward
 
 
-class FrameStack():
-    def __init__(self, depth):
-        self.depth = depth
-        #self.stack = torch.zeros((size, frame_size), device=device, requires_grad=False)
-        self.stack = None
-        self.frame_transformer = TransformFrame()
 
-    def pushFrame(self, frame):
-        #printMeta(frame, 'og frame')
-        new_frame = self.frame_transformer(frame)
-        #printMeta(new_frame, 'transformed')
-        new_frame = new_frame.unsqueeze(0)
-        #printMeta(new_frame, 'new frame')
-        #printMeta(self.stack[1:], 'stack')
-        self.stack =  torch.cat((self.stack[1:], new_frame))
-
-    def setFirstFrame(self, frame):
-        new_frame = self.frame_transformer(frame)
-        self.stack = new_frame.repeat(self.depth, 1, 1)
-    
-    def getTrueState(self):
-        return self.stack
-
-    def asState(self):
-        return self.stack.unsqueeze(0)
 
 def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
 
+    frame_stack = FrameStack(frame_stack_depth, device)
+
     rewards = torch.zeros(steps, requires_grad=False, device=device)
-    states = torch.zeros(steps, frame_stack_depth, 200, 160, requires_grad=False, device=device)
+    states = torch.zeros(steps, frame_stack.depth, frame_stack.h, frame_stack.w, requires_grad=False, device=device)
     actions = torch.zeros(steps, requires_grad=False, device=device)
     masks = torch.zeros(steps, requires_grad=False, device=device)
     values = torch.zeros(steps, requires_grad=False, device=device)
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
     
-    frame_stack = FrameStack(frame_stack_depth)
 
     state = env.reset()
-    state = torch.FloatTensor(state).to(device)
     frame_stack.setFirstFrame(state)
     every_kth_frame = 4
     current_frame = 0
@@ -258,16 +252,13 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
 
         current_frame += 1
         if current_frame == every_kth_frame:
-            print("Stacked Frame e=%d"%e)
             current_frame = 0
-            next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.pushFrame(next_frame)
-            plotTensor(frame_stack.asState(), str(e))
+            #plotFramestack(frame_stack.asState(), str(e))
         
         if done:
             current_frame = 0
             next_frame = env.reset()
-            next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.setFirstFrame(next_frame)
 
 
@@ -374,13 +365,21 @@ def printMeta(tensor, name):
     grad = str(tensor.requires_grad)
     print("%s:  %s  %s  %s"%(name, shape, device, grad))
 
-def plotTensor(tensor, name):
+def plotFramestack(tensor, name):
     plt.rcParams['figure.dpi'] = 175
     plt.grid(False)
-    tensor=tensor.view(4, 1, 200, 160)
+    tensor = tensor.squeeze().unsqueeze(1)
     plt.imshow(torchvision.utils.make_grid(tensor, normalize=True).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
     plt.savefig('tmp/%s.png'%name)
     plt.close()
+
+
+def debugTensor(tensor):
+    plt.rcParams['figure.dpi'] = 175
+    plt.grid(False)
+    tensor=tensor.view(1, 1, 80, 80)
+    plt.imshow(torchvision.utils.make_grid(tensor, normalize=True).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.show()
 
 # Hyper Parameters
 discount_gamma = 0.99
@@ -404,21 +403,26 @@ video_every = 1
 test_interval = 1
 test_batch_size = 1
 
+
+# constants
+neurons_per_frame = 648
+
 env_names = {
     'gravitar': 'Gravitar-v0',
     'spaceInvaders': 'SpaceInvaders-v0',
     'breakout': 'Breakout-v0',
     }
 
-env_name = env_names['breakout']
+env_name = env_names['gravitar']
 env = gym.make(env_name)
 #env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%1)==0, force=True)
 env_test = gym.make(env_name)
 env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
-'''
 import time
+'''
+
 
 env.reset()
 for i in range(10):
@@ -428,7 +432,35 @@ for i in range(10):
     env.step(1)
 exit()
 '''
-##### 792
+
+'''
+tf = TransformFrame()
+fs = FrameStack(4)
+con_boi = ConvFrames(4)
+frame = env.reset()
+
+
+fs.setFirstFrame(frame)
+printMeta(fs.asState(), 'fs')
+#for i in range(10):
+#    env.render()
+#    time.sleep(0.2)
+#    frame, _ , _ , _ = env.step(1)
+#    fs.pushFrame(frame)
+
+#plotFramestack(fs.asState(), 'fs')
+
+covved = con_boi(fs.asState())
+printMeta(covved, 'conv out')
+
+
+#tf_frame = tf(frame)
+#printMeta(tf_frame, 'out frame')
+#debugTensor(tf_frame)
+
+exit()
+'''
+
 '''
 con_boi = ConvFrames(3)
 fs = FrameStack(3)
