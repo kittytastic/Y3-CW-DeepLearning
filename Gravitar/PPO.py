@@ -161,14 +161,20 @@ def testReward(env, actor_critic, device, frame_stack_depth):
     frame_stack = FrameStack(frame_stack_depth)
     state = torch.FloatTensor(state).to(device)
     frame_stack.setFirstFrame(state)
+    every_kth_frame = 4
+    current_frame = 0
     
     while not done:
         state = frame_stack.asState()
         action, _ = actor_critic.chooseAction(state)
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
         next_frame = torch.FloatTensor(next_frame).to(device)
-        frame_stack.pushFrame(next_frame)
+        
         total_reward += reward
+        current_frame += 1
+        if current_frame == every_kth_frame:
+            current_frame = 0
+            frame_stack.pushFrame(next_frame)
 
     return total_reward
 
@@ -214,6 +220,8 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     state = env.reset()
     state = torch.FloatTensor(state).to(device)
     frame_stack.setFirstFrame(state)
+    every_kth_frame = 4
+    current_frame = 0
     for e in range(steps):
         state = frame_stack.asState()
 
@@ -235,10 +243,14 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
         actions[e] = action
         values[e] = estimated_value
 
-        next_frame = torch.FloatTensor(next_frame).to(device)
-        frame_stack.pushFrame(next_frame)
+        current_frame += 1
+        if current_frame == every_kth_frame:
+            current_frame = 0
+            next_frame = torch.FloatTensor(next_frame).to(device)
+            frame_stack.pushFrame(next_frame)
         
         if done:
+            current_frame = 0
             next_frame = env.reset()
             next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.setFirstFrame(next_frame)
@@ -345,13 +357,13 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 2
+episodes = 1200
 timesteps = 2048 
 frame_stack_depth = 4
 
 # Logging parameters
 video_every = 1
-test_interval = 10
+test_interval = 20
 test_batch_size = 1
 
 env_names = {
@@ -367,6 +379,17 @@ env_test = gym.make(env_name)
 env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
+'''
+import time
+
+env.reset()
+for i in range(10):
+    print(i)
+    env.render()
+    time.sleep(1)
+    env.step(1)
+exit()
+'''
 ##### 792
 '''
 con_boi = ConvFrames(3)
@@ -410,6 +433,7 @@ for i in episode_iter:
     #print(scores)
     avg_score = scores.mean()
     episode_iter.set_description("Current Score %.1f  (%d games)" % (avg_score, len(scores)))
+    score_over_time.append(avg_score)
     
 
     #returns   = torch.cat(experience['returns']).detach()
@@ -447,8 +471,8 @@ for i in episode_iter:
         #avg_score = np.mean(score_batch)
         #score.append(avg_score)
         if i % (video_every*test_interval) == 0:
-            plotScore(scores, 'score')
+            plotScore(score_over_time, 'score')
         #episode_iter.set_description("Current Score %.1f  " % avg_score)
     
 
-plotScore(scores, 'score')
+plotScore(score_over_time, 'score')
