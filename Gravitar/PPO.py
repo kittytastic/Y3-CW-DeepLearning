@@ -127,7 +127,12 @@ class ActorCritic(nn.Module):
         state = self.frame_to_state(frames)
         return self.critic(state)
 
-    def learn(self, epochs, experience, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None): 
+    def learn(self, epochs, experience, device, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None): 
+        loss_acc = torch.zeros(1, device=device, requires_grad=False)
+        entropy_acc = torch.zeros(1, device=device, requires_grad=False)
+        actor_acc = torch.zeros(1, device=device, requires_grad=False)
+        critic_acc = torch.zeros(1, device=device, requires_grad=False)
+        
         for _ in range(epochs):
             for mini_experience_batch in miniBatchIter(mini_batch_size, experience):
             
@@ -148,9 +153,21 @@ class ActorCritic(nn.Module):
 
                 loss =  vf_coeff * critic_loss + actor_loss - entropy_coeff * entropy
 
+                loss_acc += loss.detach()
+                critic_acc += (vf_coeff * critic_loss).detach()
+                actor_acc += actor_loss.detach()
+                entropy_acc += (entropy_coeff * entropy).detach()
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+        
+        loss_acc = loss_acc.mean().detach().cpu().numpy()
+        entropy_acc = entropy_acc.mean().detach().cpu().numpy()
+        actor_acc = actor_acc.mean().detach().cpu().numpy()
+        critic_acc = critic_acc.mean().detach().cpu().numpy()
+
+        return {'loss': loss_acc, 'entropy': entropy_acc, 'actor':actor_acc, 'critic':critic_acc}
 
 
 def testReward(env, actor_critic, device, frame_stack_depth):
@@ -168,12 +185,12 @@ def testReward(env, actor_critic, device, frame_stack_depth):
         state = frame_stack.asState()
         action, _ = actor_critic.chooseAction(state)
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
-        next_frame = torch.FloatTensor(next_frame).to(device)
         
         total_reward += reward
         current_frame += 1
         if current_frame == every_kth_frame:
             current_frame = 0
+            next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.pushFrame(next_frame)
 
     return total_reward
@@ -332,11 +349,27 @@ def getDevice(force_cpu=False):
 
     return device
 
+def accumulateLoss(all_loss, step_loss):
+    for key in all_loss.keys():
+        all_loss[key].append(step_loss[key])
+
+def PlotAllLoss(loss, name):
+    fig, axs = plt.subplots(len(loss), sharex=True, gridspec_kw={'hspace': 0})
+    i=0
+    for loss_name, loss in loss.items():
+        axs[i].plot(loss)
+        axs[i].set_ylabel(loss_name)
+        i+=1
+    plt.xlabel('Thing')
+    plt.savefig('%s.png'%name)
+    plt.close()
+
 def plotScore(score, name):
     plt.plot(score)
     plt.ylabel("Score")
     plt.xlabel('Something')
     plt.savefig('%s.png'%name)
+    plt.close()
 
 def printMeta(tensor, name):
     shape = str(tensor.shape)
@@ -357,13 +390,13 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 1200
+episodes = 20
 timesteps = 2048 
 frame_stack_depth = 4
 
 # Logging parameters
 video_every = 1
-test_interval = 20
+test_interval = 1
 test_batch_size = 1
 
 env_names = {
@@ -423,6 +456,9 @@ model = ActorCritic(frame_stack_depth, num_outputs, 128, lr=learning_rate).to(de
 
 
 score_over_time = []
+experiment_scores = []
+
+all_loss = {'loss':[], 'entropy':[], 'actor':[], 'critic':[]}
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
@@ -458,21 +494,24 @@ for i in episode_iter:
     #printMeta(advantage, 'advantage')
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
-    model.learn(epochs, experience, 
+    losses = model.learn(epochs, experience, device,
         mini_batch_size=mini_batch_size,
         entropy_coeff=entropy_coeff,
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon)
 
-
+    accumulateLoss(all_loss, losses)
     
     if i % test_interval == 0:
         score_batch = [testReward(env_test, model, device, frame_stack_depth) for _ in range(test_batch_size)]
-        #avg_score = np.mean(score_batch)
-        #score.append(avg_score)
+        avg_score = np.mean(score_batch)
+        experiment_scores.append(avg_score)
         if i % (video_every*test_interval) == 0:
+            PlotAllLoss(all_loss, 'loss')
             plotScore(score_over_time, 'score')
+            plotScore(experiment_scores, 'experiment_score')
         #episode_iter.set_description("Current Score %.1f  " % avg_score)
     
 
 plotScore(score_over_time, 'score')
+plotScore(experiment_scores, 'experiment_score')
