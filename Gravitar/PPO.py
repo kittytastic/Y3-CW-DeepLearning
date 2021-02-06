@@ -34,16 +34,27 @@ class TransformFrame(nn.Module):
         return smaller.squeeze()
 
 class FrameStack():
-    def __init__(self, depth, device):
+    def __init__(self, depth, device, skip=4):
         self.depth = depth
         self.device = device
         self.stack = None
         self.frame_transformer = TransformFrame()
 
         self.h = 80
-        self.w= 80
+        self.w = 80
+
+        self.stack_every = skip
+        self.current_frame = 0
+        
 
     def pushFrame(self, frame):
+        self.current_frame += 1
+        
+        if self.current_frame != self.stack_every:
+            return
+
+        self.current_frame = 0
+
         frame_tensor = torch.FloatTensor(frame).to(self.device)
         #printMeta(frame, 'og frame')
         new_frame = self.frame_transformer(frame_tensor)
@@ -54,6 +65,7 @@ class FrameStack():
         self.stack =  torch.cat((self.stack[1:], new_frame))
 
     def setFirstFrame(self, frame):
+        self.current_frame = 0
         frame_tensor = torch.FloatTensor(frame).to(self.device)
         new_frame = self.frame_transformer(frame_tensor)
         self.stack = new_frame.repeat(self.depth, 1, 1)
@@ -179,22 +191,15 @@ def testReward(env, actor_critic, device, frame_stack_depth):
     done = False
 
     frame_stack = FrameStack(frame_stack_depth, device)
-    #state = torch.FloatTensor(state).to(device)
     frame_stack.setFirstFrame(state)
-    every_kth_frame = 4
-    current_frame = 0
-    
+   
     while not done:
         state = frame_stack.asState()
         action, _ = actor_critic.chooseAction(state)
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
         
         total_reward += reward
-        current_frame += 1
-        if current_frame == every_kth_frame:
-            current_frame = 0
-            #next_frame = torch.FloatTensor(next_frame).to(device)
-            frame_stack.pushFrame(next_frame)
+        frame_stack.pushFrame(next_frame)
 
     return total_reward
 
@@ -215,15 +220,12 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
 
     state = env.reset()
     frame_stack.setFirstFrame(state)
-    every_kth_frame = 4
-    current_frame = 0
     for e in range(steps):
         state = frame_stack.asState()
 
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCriticFor(state)
 
-      
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
@@ -234,14 +236,13 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
         actions[e] = action
         values[e] = estimated_value
 
-        current_frame += 1
-        if current_frame == every_kth_frame:
-            current_frame = 0
-            frame_stack.pushFrame(next_frame)
-            #plotFramestack(frame_stack.asState(), str(e))
+      
+        frame_stack.pushFrame(next_frame)
+        
+        #if frame_stack.current_frame == 4:
+        #    plotFramestack(frame_stack.asState(), str(e))
         
         if done:
-            current_frame = 0
             next_frame = env.reset()
             frame_stack.setFirstFrame(next_frame)
 
@@ -378,8 +379,8 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 60
-timesteps = 1024 
+episodes = 1
+timesteps = 128 
 frame_stack_depth = 4
 
 # Logging parameters
