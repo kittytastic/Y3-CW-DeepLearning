@@ -22,6 +22,7 @@ https://ermongroup.github.io/blog/a-tutorial-on-mmd-variational-autoencoders/#ki
 https://www.microsoft.com/en-us/research/blog/less-pain-more-gain-a-simple-method-for-vae-training-with-less-of-that-kl-vanishing-agony/
 
 https://arxiv.org/pdf/1905.02417.pdf
+https://towardsdatascience.com/gan-ways-to-improve-gan-performance-acf37f9f59b
 
 
 ## RL
@@ -41,3 +42,13 @@ lowkey ram: https://deepsense.ai/playing-atari-on-ram-with-deep-q-learning/
 Ram or others: https://jair.org/index.php/jair/article/view/10819/25823
 
 https://medium.com/@SmartLabAI/reinforcement-learning-algorithms-an-intuitive-overview-904e2dff5bbc
+
+PPO the boi: https://openai.com/blog/baselines-acktr-a2c/
+https://arxiv.org/pdf/1707.06347.pdf
+https://github.com/higgsfield/RL-Adventure-2/blob/master/3.ppo.ipynb
+https://towardsdatascience.com/proximal-policy-optimization-ppo-with-tensorflow-2-x-89c9430ecc26
+
+https://towardsdatascience.com/proximal-policy-optimization-ppo-with-sonic-the-hedgehog-2-and-3-c9c21dbed5e
+
+
+https://danieltakeshi.github.io/2016/11/25/frame-skipping-and-preprocessing-for-deep-q-networks-on-atari-2600-games/
