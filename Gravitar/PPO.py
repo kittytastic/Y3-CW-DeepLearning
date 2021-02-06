@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from tqdm import trange
+import torchvision
 
 # Python 3.9.1 itemgetter op
 def itemgetter(*items):
@@ -156,7 +157,7 @@ class ActorCritic(nn.Module):
                 loss_acc += loss.detach()
                 critic_acc += (vf_coeff * critic_loss).detach()
                 actor_acc += actor_loss.detach()
-                entropy_acc += (entropy_coeff * entropy).detach()
+                entropy_acc -= (entropy_coeff * entropy).detach()
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -227,7 +228,6 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     rewards = torch.zeros(steps, requires_grad=False, device=device)
     states = torch.zeros(steps, frame_stack_depth, 200, 160, requires_grad=False, device=device)
     actions = torch.zeros(steps, requires_grad=False, device=device)
-    #probs = torch.zeros(steps, requires_grad=False, device=device)
     masks = torch.zeros(steps, requires_grad=False, device=device)
     values = torch.zeros(steps, requires_grad=False, device=device)
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
@@ -245,11 +245,7 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
         action, action_distribution = actor_critic.chooseAction(state)
         estimated_value = actor_critic.getCriticFor(state)
 
-        #printMeta(state, 'in here state')
-        #printMeta(estimated_value, 'in here estimated val')
-        #printMeta(action, 'in here action')
-
-        #raise Exception("Stawppp")
+      
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
@@ -262,9 +258,11 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
 
         current_frame += 1
         if current_frame == every_kth_frame:
+            print("Stacked Frame e=%d"%e)
             current_frame = 0
             next_frame = torch.FloatTensor(next_frame).to(device)
             frame_stack.pushFrame(next_frame)
+            plotTensor(frame_stack.asState(), str(e))
         
         if done:
             current_frame = 0
@@ -285,7 +283,6 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     #printMeta(next_value, 'next_value')
 
 
-    #return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'probs':probs, 'values':values}, next_value
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'values':values}, next_value
 
 def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, tau=None):
@@ -377,6 +374,14 @@ def printMeta(tensor, name):
     grad = str(tensor.requires_grad)
     print("%s:  %s  %s  %s"%(name, shape, device, grad))
 
+def plotTensor(tensor, name):
+    plt.rcParams['figure.dpi'] = 175
+    plt.grid(False)
+    tensor=tensor.view(4, 1, 200, 160)
+    plt.imshow(torchvision.utils.make_grid(tensor, normalize=True).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
+    plt.savefig('tmp/%s.png'%name)
+    plt.close()
+
 # Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
@@ -390,8 +395,8 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 20
-timesteps = 2048 
+episodes = 1
+timesteps = 128 
 frame_stack_depth = 4
 
 # Logging parameters
@@ -448,7 +453,7 @@ exit()
 num_inputs  = env.observation_space
 num_outputs = env.action_space.n
 
-print(env.observation_space)
+
 print("inputs: %s   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 device = getDevice(force_cpu=False)
 
@@ -462,34 +467,25 @@ all_loss = {'loss':[], 'entropy':[], 'actor':[], 'critic':[]}
 
 episode_iter = trange(0, episodes)
 for i in episode_iter:
-    raw_experience, next_value = accrueExperience(env, model, frame_stack_depth, device, steps=timesteps)
 
+    raw_experience, next_value = accrueExperience(env, model, frame_stack_depth, device, steps=timesteps)
     experience = proccessExperiences(next_value, raw_experience, timesteps, device, gamma=discount_gamma, tau=GAE_tau)
+    
     scores = np.array(experience['scores'])
-    #print(scores)
     avg_score = scores.mean()
     episode_iter.set_description("Current Score %.1f  (%d games)" % (avg_score, len(scores)))
     score_over_time.append(avg_score)
     
-
-    #returns   = torch.cat(experience['returns']).detach()
-    #print(returns)
     returns   = experience['returns'].detach()
     #printMeta(returns, 'returns')
-    #log_probs = torch.Tensor(experience['log_probs']).detach()
     log_probs = experience['log_probs'].detach()
     #printMeta(log_probs, 'log_probs')
-    #values    = torch.Tensor(experience['values']).detach()
     values    = experience['values'].detach()
     #printMeta(values, 'values')
-    #states = torch.Tensor()
-    #states    = torch.cat(experience['states']).view(len(experience['states']), -1)
     states    = experience['states']
     #printMeta(states, 'states')
-    #actions   = torch.Tensor(experience['actions'])
     actions   = experience['actions']
     #printMeta(actions, 'actions')
-    #advantage = returns - values
     advantage = torch.Tensor.detach(returns - values)
     #printMeta(advantage, 'advantage')
 
