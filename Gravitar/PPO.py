@@ -56,12 +56,8 @@ class FrameStack():
         self.current_frame = 0
 
         frame_tensor = torch.FloatTensor(frame).to(self.device)
-        #printMeta(frame, 'og frame')
         new_frame = self.frame_transformer(frame_tensor)
-        #printMeta(new_frame, 'transformed')
         new_frame = new_frame.unsqueeze(0)
-        #printMeta(new_frame, 'new frame')
-        #printMeta(self.stack[1:], 'stack')
         self.stack =  torch.cat((self.stack[1:], new_frame))
 
     def setFirstFrame(self, frame):
@@ -134,11 +130,10 @@ class ActorCritic(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
        
 
-    def chooseAction(self, frames, p=False):
+    def getActionDist(self, frames):
         actor_ops = self.actor(frames)
         dist      = torch.distributions.Categorical(actor_ops)
-        action    = dist.sample()
-        return action, dist
+        return dist
 
     def getCriticFor(self, frames):
         return self.critic(frames)
@@ -154,7 +149,7 @@ class ActorCritic(nn.Module):
             
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
                 
-                _, dist = self.chooseAction(state, p=False)
+                dist = self.getActionDist(state)
                 value = self.getCriticFor(state)
                 entropy = dist.entropy().mean()
                 new_log_probs = dist.log_prob(action)
@@ -195,7 +190,10 @@ def testReward(env, actor_critic, device, frame_stack_depth):
    
     while not done:
         state = frame_stack.asState()
-        action, _ = actor_critic.chooseAction(state)
+
+        action_distribution = actor_critic.getActionDist(state)
+        action = action_distribution.sample()
+
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
         
         total_reward += reward
@@ -223,7 +221,8 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     for e in range(steps):
         state = frame_stack.asState()
 
-        action, action_distribution = actor_critic.chooseAction(state)
+        action_distribution = actor_critic.getActionDist(state)
+        action = action_distribution.sample()
         estimated_value = actor_critic.getCriticFor(state)
 
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
