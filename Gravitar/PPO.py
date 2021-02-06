@@ -204,9 +204,9 @@ def testReward(env, actor_critic, device, frame_stack_depth):
 
 
 
-def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
+def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, steps=None):
 
-    frame_stack = FrameStack(frame_stack_depth, device)
+    #frame_stack = FrameStack(frame_stack_depth, device)
 
     rewards = torch.zeros(steps, requires_grad=False, device=device)
     states = torch.zeros(steps, frame_stack.depth, frame_stack.h, frame_stack.w, requires_grad=False, device=device)
@@ -216,8 +216,10 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
     
 
-    state = env.reset()
-    frame_stack.setFirstFrame(state)
+    #state = env.reset()
+    #frame_stack.setFirstFrame(state)
+    episodes_scores = []
+    total_reward = partial_reward
     for e in range(steps):
         state = frame_stack.asState()
 
@@ -235,13 +237,15 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
         actions[e] = action
         values[e] = estimated_value
 
-      
+        total_reward += reward
         frame_stack.pushFrame(next_frame)
         
         #if frame_stack.current_frame == 4:
         #    plotFramestack(frame_stack.asState(), str(e))
         
         if done:
+            episodes_scores.append(total_reward)
+            total_reward = 0
             next_frame = env.reset()
             frame_stack.setFirstFrame(next_frame)
 
@@ -258,22 +262,13 @@ def accrueExperience(env, actor_critic, frame_stack_depth, device, steps=None):
     #printMeta(next_value, 'next_value')
 
 
-    return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'values':values}, next_value
+    return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'values':values}, next_value, frame_stack, episodes_scores, total_reward
 
 def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
     
     values = torch.hstack((values, next_value))
    
-    scores = []
-    running_score = 0
-    for i in range(len(rewards)):
-        running_score += rewards[i]
-        if masks[i]==0.0:
-            scores.append(running_score.detach().cpu().numpy())
-            running_score = 0
-   
-
     # Calculate General advantage estimation and returns for each step
     gae = 0
     returns = torch.zeros(steps, requires_grad=False, device=device)
@@ -283,7 +278,7 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
         #retruns.insert(0, gae + values[step])
         returns[step] = gae + values[step]
     
-    return {**raw_experience, 'returns':returns, 'scores': scores}
+    return {**raw_experience, 'returns':returns}
 
 def miniBatchIter(mini_batch_size, experiences):
     batch_size = len(experiences[list(experiences.keys())[0]])
@@ -378,7 +373,7 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 1
+episodes = 10
 timesteps = 128 
 frame_stack_depth = 4
 
@@ -399,9 +394,8 @@ env_names = {
 
 env_name = env_names['breakout']
 env = gym.make(env_name)
-#env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%1)==0, force=True)
+env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%video_every)==0, force=True)
 env_test = gym.make(env_name)
-env_test = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%(video_every*test_batch_size))==0, force=True)
 
 
 import time
@@ -481,16 +475,26 @@ experiment_scores = []
 
 all_loss = {'loss':[], 'entropy':[], 'actor':[], 'critic':[]}
 
+frame_stack = FrameStack(frame_stack_depth, device)
+state = env.reset()
+frame_stack.setFirstFrame(state)
+
+partial_reward = 0
+curr_episode = 0
+
 episode_iter = trange(0, episodes)
 for i in episode_iter:
 
-    raw_experience, next_value = accrueExperience(env, model, frame_stack_depth, device, steps=timesteps)
+    raw_experience, next_value, frame_stack, scores, partial_reward = accrueExperience(env, model, frame_stack, partial_reward, device, steps=timesteps)
+
     experience = proccessExperiences(next_value, raw_experience, timesteps, device, gamma=discount_gamma, tau=GAE_tau)
     
-    scores = np.array(experience['scores'])
-    avg_score = scores.mean()
-    episode_iter.set_description("Current Score %.1f  (%d games)" % (avg_score, len(scores)))
-    score_over_time.append(avg_score)
+
+    curr_episode += len(scores)
+    if len(scores) > 0:
+        avg_score = np.mean(np.array(scores))
+        episode_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
+        score_over_time += scores
     
     returns   = experience['returns'].detach()
     #printMeta(returns, 'returns')
@@ -518,12 +522,12 @@ for i in episode_iter:
         score_batch = [testReward(env_test, model, device, frame_stack_depth) for _ in range(test_batch_size)]
         avg_score = np.mean(score_batch)
         experiment_scores.append(avg_score)
-        if i % (video_every*test_interval) == 0:
-            PlotAllLoss(all_loss, 'loss')
-            plotScore(score_over_time, 'score')
-            plotScore(experiment_scores, 'experiment_score')
-        #episode_iter.set_description("Current Score %.1f  " % avg_score)
+        
+        PlotAllLoss(all_loss, 'loss')
+        plotScore(score_over_time, 'score')
+        plotScore(experiment_scores, 'experiment_score')
     
 
+PlotAllLoss(all_loss, 'loss')
 plotScore(score_over_time, 'score')
 plotScore(experiment_scores, 'experiment_score')
