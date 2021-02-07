@@ -74,10 +74,10 @@ class FrameStack():
 
 
 class Block(nn.Module):
-    def __init__(self, in_f, out_f, stride, padding):
+    def __init__(self, in_f, out_f, stride, padding, kernel):
         super(Block, self).__init__()
         self.f = nn.Sequential(
-            nn.Conv2d(in_f, out_f, kernel_size=3, stride=stride, padding=padding),
+            nn.Conv2d(in_f, out_f, kernel_size=kernel, stride=stride, padding=padding),
             nn.BatchNorm2d(out_f),
             nn.LeakyReLU(inplace=True)
         )
@@ -88,16 +88,16 @@ class ConvFrames(nn.Module):
     def __init__(self, frames):
         super(ConvFrames, self).__init__()
         # <- 4 x 80 x 80
-        self.conv1 = Block(frames, frames*2, 2, 0) # -> 8 x 39 x 39
-        self.conv2 = Block(frames*2, frames*4, 2, 0) # -> 16 x 19 x 19
-        self.conv3 = Block(frames*4, frames*8, 2, 0) # -> 32 x 9 x 9
+        self.conv1 = Block(frames, 16, 4, 0, 8) # -> 8 x 39 x 39
+        self.conv2 = Block(16, 32, 2, 0, 4) # -> 16 x 19 x 19
+        #self.conv3 = Block(64, 128, 2, 0, 3) # -> 32 x 9 x 9
 
     def forward(self, x):
         x = self.conv1(x)
         #printMeta(x, 'con1')
         x = self.conv2(x)
         #printMeta(x, 'conv2')
-        x = self.conv3(x)
+        #x = self.conv3(x)
         #printMeta(x, 'conv3')
         x = x.flatten(1)
         return x
@@ -382,14 +382,14 @@ GAE_tau = 0.95
 
 
 mini_batch_size = 32
-entropy_coeff = 0.01
+entropy_coeff = 0.001
 vf_coeff = 1
 epsilon = 0.2
 
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 4000
+episodes = 80
 timesteps = 1024
 frame_stack_depth = 4
 
@@ -400,7 +400,7 @@ test_batch_size = 3
 
 
 # constants
-neurons_per_frame = 648
+neurons_per_frame = 2048//4
 
 env_names = {
     'gravitar': 'Gravitar-v0',
@@ -429,7 +429,7 @@ exit()
 
 '''
 tf = TransformFrame()
-fs = FrameStack(4)
+fs = FrameStack(4, torch.device('cpu'))
 con_boi = ConvFrames(4)
 frame = env.reset()
 
@@ -483,7 +483,7 @@ num_outputs = env.action_space.n
 print("inputs: %s   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 device = getDevice(force_cpu=False)
 
-model = ActorCritic(frame_stack_depth, num_outputs, 128, lr=learning_rate).to(device)
+model = ActorCritic(frame_stack_depth, num_outputs, 256, lr=learning_rate).to(device)
 
 
 score_over_time = []
