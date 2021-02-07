@@ -24,7 +24,12 @@
 
 % this is where the sections begin
 \section{Architecture}
-...
+\begin{center}
+    \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
+\end{center}
+The network has the general VAE shape. E follows a ResNet \cite{ResNet} architecture with 18 convolution layers. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the resnet to latent space size. The latent space is 128 dimensions. D' is again 3 fully connected upscaling to D. D is also based of the ResNet-18 architecture however where ResNet would scale down at the end of a convolutional layer D scales up.
+
+
 
 \begin{tabular}{c|c|c|c}
     a&b&c&d\\
@@ -44,24 +49,34 @@ The methodology should be very concise and the mathematical notation should try 
 \end{center}
 The architectural diagram above was created using Inkscape and exported to a PDF. This was then uploaded to the figures directory on the left.
 
-\section{Investigating class subclassification}
-To make a pegasus you may initially think of it as a cross between a horse and a bird. However this poses issues, namely that birds contain many features you would not expect to find on a pegasus, such as a beak. Given that we intend to create our pegasus via interpolation between a picture of a horse and a picture of a bird it would be useful to select pictures of birds that have useful features i.e. wings and exclude pictures containing useless features like beaks. Hence I investigate using k-means over the latent space of a class to subdivide that class.
+\section{Class subclassification}
+To make a pegasus you may initially think of it as a cross between a horse and a bird. However this poses issues, namely that birds contain many features you would not expect to find on a pegasus, such as a beak. Given that we intend to create our pegasus via interpolation between a picture of a horse and a picture of a bird it would be useful to select pictures of birds that have useful features i.e. wings and exclude pictures containing useless features like beaks. Likewise given we want a white pegasus it would be useful to be using pictures of white horses.
+To do this I use use semi-supervised learning. I cluster a batch of a class e.g. horses, using k-means in latent space. Then I find which cluster(s) a small handful of selected examples \ref{fig:good_horses} are in. These clusters are then selected as subclasses which are later used in Pegasus generation.    
+
+\begin{figure}
+    \begin{center}
+        \includegraphics[width=0.5\textwidth]{figures/good_horses.png}
+    \end{center}
+    \caption{White horses used to select clusters}
+    \label{fig:good_horses}
+\end{figure}
 ...    WORDS
 
 \section{Generating a Pegasus}
-...
+The generation of a pegasus is relteivly simple. 
 
 \section{Results}
 The results look very blurry, where the best batch of images looks like this:
 \begin{center}
-    \includegraphics[width=0.5\textwidth]{figures/best-batch.png}
+    \includegraphics[width=0.5\textwidth]{figures/kinda_allright64.png}
 \end{center}
-From this batch, the most Pegasus-like image (with quite a stretch of the imagination) is:
+From this batch, the most Pegasus-like image is:
 \begin{center}
-    \includegraphics[width=0.075\textwidth]{figures/best-pegasus.png}
+    \includegraphics[width=0.1\textwidth]{figures/kinda_allright1.png}
 \end{center}
 
 \section{Limitations}
+In hind-sight a ResNet was probably overkill given the avaliable training time.
 It's very difficult to see anything that looks like a Pegasus. In the future, this could be improved by training for more than 10 epochs, although this was not possible due to the time constraints.
 
 \section*{Bonuses}
