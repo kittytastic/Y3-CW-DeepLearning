@@ -150,18 +150,42 @@ class ActorCritic(nn.Module):
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
                 
                 dist = self.getActionDist(state)
-                value = self.getCriticFor(state)
+                #print("Dist: %s"%dist)
+                #value = self.getCriticFor(state).flatten()
+                value = self.getCriticFor(state).squeeze()
+                #print("All value: %s"%value)
                 entropy = dist.entropy().mean()
+                #print("entropy: %s"%str(entropy))
+                #print("Actions: %s"%action)
                 new_log_probs = dist.log_prob(action)
-
+                #print("new_log_probs: %s"%new_log_probs)
+                #print("old_log_probs: %s"%(old_log_probs))
+                
                 ratio = (new_log_probs - old_log_probs).exp()
+                #print("ratio: %s"%str(ratio))
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0-clip_epsilon, 1.0+clip_epsilon)*advantage
 
+                #print("Value: %s"%str(value))
+                #print("Returns: %s"%str(returns))
+                #print("Returns - values: %s"%str(retruns - value))
+
+                #print("Surr 1: %s"%surr1)
+                #print("Surr 2: %s"%surr2)
+                #print("Min: %s"%torch.min(surr1, surr2))
+
                 actor_loss = - torch.min(surr1, surr2).mean()
                 critic_loss = 0.5 * (retruns - value).pow(2).mean()
+                
+                #print(actor_loss)
+                #print(critic_loss)
 
                 loss =  vf_coeff * critic_loss + actor_loss - entropy_coeff * entropy
+
+                #print(loss)
+                #print(vf_coeff * critic_loss)
+                #print(actor_loss)
+                #print(entropy_coeff * entropy)
 
                 loss_acc += loss.detach()
                 critic_acc += (vf_coeff * critic_loss).detach()
@@ -222,16 +246,21 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
     total_reward = partial_reward
     for e in range(steps):
         state = frame_stack.asState()
-
+        #printMeta(state, "state")
         action_distribution = actor_critic.getActionDist(state)
+        #print("action_distribution: %s"%action_distribution)
         action = action_distribution.sample()
+        #print("action: %s"%action)
 
 
-        estimated_value = actor_critic.getCriticFor(state)
+        estimated_value = actor_critic.getCriticFor(state).squeeze()
+        #print("estimated value: %s Taking action: %s"%(estimated_value, action))
+       
 
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
+        #print("log_prob: %s"%log_prob)
 
         log_probs[e] = log_prob     
         masks[e] = int(not done) # Used to mask out
@@ -270,25 +299,37 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
 def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
     
+    #print(tau, gamma)
+    #print(next_value)
+
     values = torch.hstack((values, next_value))
-   
+    #printMeta(values, 'values')
+    #print(values)
+    #print(rewards)
+    #print(masks)
+
     # Calculate General advantage estimation and returns for each step
     gae = 0
     returns = torch.zeros(steps, requires_grad=False, device=device)
     for step in reversed(range(len(rewards))):
-        #print("Reward: %s    Value:  %s     Value+1: %s"%(str(rewards[step]), str(values[step]), str(values[step+1])))
-        #print("Mask: %s"%(str(masks[step])))
+        #print("Reward: %s    Value:  %s     Value+1: %s  Mask: %s"%(str(rewards[step]), str(values[step]), str(values[step+1]), str(masks[step])))
+
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
+        
+        #print(gae)
         #retruns.insert(0, gae + values[step])
         returns[step] = gae + values[step]
+        #print(returns[step])
     
+    #print(returns)
     return {**raw_experience, 'returns':returns}
 
 def miniBatchIter(mini_batch_size, experiences):
     batch_size = len(experiences[list(experiences.keys())[0]])
     for _ in range(batch_size//mini_batch_size):
         rand_ids = np.random.randint(0, batch_size, mini_batch_size)
+        #rand_ids = list(range(mini_batch_size))
         yield {key: field[rand_ids] for key, field in experiences.items()}
 
 def getDevice(force_cpu=False):
@@ -381,20 +422,21 @@ discount_gamma = 0.99
 GAE_tau = 0.95
 
 
-mini_batch_size = 32
-entropy_coeff = 0.001
+
+entropy_coeff = 0.01
 vf_coeff = 1
 epsilon = 0.2
 
-learning_rate = 3e-4
+learning_rate = 0.003
 
-epochs = 5
-episodes = 80
+epochs = 4
+mini_batch_size = 8
+episodes = 50
 timesteps = 1024
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 50
+video_every = 10
 test_interval = 40
 test_batch_size = 3
 
@@ -484,6 +526,7 @@ print("inputs: %s   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 device = getDevice(force_cpu=False)
 
 model = ActorCritic(frame_stack_depth, num_outputs, 256, lr=learning_rate).to(device)
+#model.eval()
 
 
 score_over_time = []
@@ -524,13 +567,7 @@ for i in episode_iter:
     #printMeta(actions, 'actions')
     advantage = torch.Tensor.detach(returns - values)
     #printMeta(advantage, 'advantage')
-    
-    #print(values)
-
-    #print(experience['rewards'])
-
     #print(returns)
-
     #print(advantage)
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
