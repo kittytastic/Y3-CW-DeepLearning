@@ -124,10 +124,10 @@ class ActorCritic(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, num_outputs),
-            nn.Softmax(dim=0),
+            nn.Softmax(dim=1),
         )
 
-        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.optimiser = optim.Adam(self.parameters(), lr=lr)
        
 
     def getActionDist(self, frames):
@@ -168,9 +168,9 @@ class ActorCritic(nn.Module):
                 actor_acc += actor_loss.detach()
                 entropy_acc -= (entropy_coeff * entropy).detach()
 
-                self.optimizer.zero_grad()
+                self.optimiser.zero_grad()
                 loss.backward()
-                self.optimizer.step()
+                self.optimiser.step()
         
         loss_acc = loss_acc.mean().detach().cpu().numpy()
         entropy_acc = entropy_acc.mean().detach().cpu().numpy()
@@ -225,11 +225,14 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
 
         action_distribution = actor_critic.getActionDist(state)
         action = action_distribution.sample()
+
+
         estimated_value = actor_critic.getCriticFor(state)
 
         next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
 
         log_prob = action_distribution.log_prob(action)
+
         log_probs[e] = log_prob     
         masks[e] = int(not done) # Used to mask out
         rewards[e] = reward
@@ -273,6 +276,8 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
     gae = 0
     returns = torch.zeros(steps, requires_grad=False, device=device)
     for step in reversed(range(len(rewards))):
+        #print("Reward: %s    Value:  %s     Value+1: %s"%(str(rewards[step]), str(values[step]), str(values[step+1])))
+        #print("Mask: %s"%(str(masks[step])))
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae
         #retruns.insert(0, gae + values[step])
@@ -331,6 +336,17 @@ def PlotAllLoss(loss, name):
     plt.savefig('%s.png'%name)
     plt.close()
 
+
+def CheckpointModel(model, checkpoint_name, loss):
+    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'loss':loss}, '%s.chkpt'%checkpoint_name)
+
+def RestoreModel(model, checkpoint_name):
+    params = torch.load('Checkpoints/%s.chkpt'%checkpoint_name)
+    model.load_state_dict(params['model'])
+    model.optimiser.load_state_dict(params['optimiser'])
+    loss = params['loss']
+    return loss
+
 def plotScore(score, name):
     plt.plot(score)
     plt.ylabel("Score")
@@ -373,14 +389,14 @@ epsilon = 0.2
 learning_rate = 3e-4
 
 epochs = 5
-episodes = 10
-timesteps = 128 
+episodes = 4000
+timesteps = 1024
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 1
-test_interval = 1
-test_batch_size = 1
+video_every = 50
+test_interval = 40
+test_batch_size = 3
 
 
 # constants
@@ -495,7 +511,7 @@ for i in episode_iter:
         avg_score = np.mean(np.array(scores))
         episode_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
         score_over_time += scores
-    
+
     returns   = experience['returns'].detach()
     #printMeta(returns, 'returns')
     log_probs = experience['log_probs'].detach()
@@ -508,6 +524,14 @@ for i in episode_iter:
     #printMeta(actions, 'actions')
     advantage = torch.Tensor.detach(returns - values)
     #printMeta(advantage, 'advantage')
+    
+    #print(values)
+
+    #print(experience['rewards'])
+
+    #print(returns)
+
+    #print(advantage)
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
     losses = model.learn(epochs, experience, device,
@@ -531,3 +555,5 @@ for i in episode_iter:
 PlotAllLoss(all_loss, 'loss')
 plotScore(score_over_time, 'score')
 plotScore(experiment_scores, 'experiment_score')
+
+#CheckpointModel(actor_critic, 'test', all_loss)
