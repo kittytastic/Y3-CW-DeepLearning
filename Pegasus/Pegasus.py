@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 
 # hyperparameters
 batch_size  = 256
-latent_size = 32
+latent_size = 256
 dataset = 'cifar10'
 #dataset = 'stl10'
 
@@ -77,7 +77,8 @@ def cycle(iterable):
 if dataset == 'cifar10':
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download=True, transform=torchvision.transforms.Compose([
-            #torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.RandomHorizontalFlip(),
+            #torchvision.transforms.ColorJitter(brightness=0.3, contrast=0.1, saturation=0.2, hue=0.1),
             torchvision.transforms.ToTensor(),
         ])),
         shuffle=True, batch_size=batch_size, drop_last=True
@@ -110,10 +111,10 @@ plotTensor(x)
 
 # %%
 def CheckpointModel(model, checkpoint_name, epoch, loss):
-    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'epoch':epoch, 'loss':loss}, '%s.chkpt'%checkpoint_name)
+    torch.save({'model':model.state_dict(), 'optimiser':model.optimiser.state_dict(), 'epoch':epoch, 'loss':loss}, 'Checkpoints/%s.chkpt'%checkpoint_name)
 
 def RestoreModel(model, checkpoint_name):
-    params = torch.load('%s.chkpt'%checkpoint_name)
+    params = torch.load('Checkpoints/%s.chkpt'%checkpoint_name)
     model.load_state_dict(params['model'])
     model.optimiser.load_state_dict(params['optimiser'])
     epoch = params['epoch']
@@ -250,8 +251,9 @@ class VAE(nn.Module):
         loss.backward()
         self.optimiser.step()
 
-    
-    def compute_kernel(self, x, y):
+    # computeKernel and computeMMD are taken from https://github.com/napsternxg/pytorch-practice/blob/master/Pytorch%20-%20MMD%20VAE.ipynb, which is relaed under an Apache 2.0 license
+    # which was a pytorch port of https://github.com/ShengjiaZhao/MMD-Variational-Autoencoder/blob/master/mmd_vae.ipynb
+    def computeKernel(self, x, y):
         x_size = x.size(0)
         y_size = y.size(0)
         dim = x.size(1)
@@ -259,13 +261,13 @@ class VAE(nn.Module):
         y = y.unsqueeze(0) # (1, y_size, dim)
         tiled_x = x.expand(x_size, y_size, dim)
         tiled_y = y.expand(x_size, y_size, dim)
-        kernel_input = (tiled_x - tiled_y).pow(2).mean(2)/float(dim)
+        kernel_input = (tiled_x - tiled_y).pow(2).mean(2)/float(dim) # Gaussian kernel
         return torch.exp(-kernel_input) # (x_size, y_size)
 
-    def compute_mmd(self, x, y):
-        x_kernel = self.compute_kernel(x, x)
-        y_kernel = self.compute_kernel(y, y)
-        xy_kernel = self.compute_kernel(x, y)
+    def computeMMD(self, x, y):
+        x_kernel = self.computeKernel(x, x)
+        y_kernel = self.computeKernel(y, y)
+        xy_kernel = self.computeKernel(x, y)
         mmd = x_kernel.mean() + y_kernel.mean() - 2*xy_kernel.mean()
         return mmd
 
@@ -274,9 +276,12 @@ class VAE(nn.Module):
         z = self.encode(x)
         x_hat = self.decode(z)
 
+        # Take 200 random stamples from the prior distribution (which is normal in this case) 
         random_z_sample = torch.randn(200, latent_size, device=device)
 
-        mmd = self.compute_mmd(random_z_sample, z)
+        mmd = self.computeMMD(random_z_sample, z)
+
+        # In our case the nll is proporition to the squared distance, so use that instead
         nll = (x_hat - x).pow(2).mean()
         loss = nll + mmd
 
@@ -299,18 +304,19 @@ from ResNet import FCResNet18Encoder, FCResNet18Decoder
 vae_enc = FCResNet18Encoder(latent_size)
 vae_dec = FCResNet18Decoder(latent_size, image_size)
 Vfcres = VAE(vae_enc, vae_dec).to(device)
-epoch, loss = RestoreModel(Vfcres, 'Vfcres-11hr')
-all_loss = loss['loss']
-mmd_loss = loss['mmd']
-recon_loss = loss['recon']
+epoch, loss = RestoreModel(Vfcres, 'Vfcres-fix-10hr')
+#all_loss = loss['loss']
+#mmd_loss = loss['mmd']
+#recon_loss = loss['recon']
 
 
-all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 1, p_epoch_loss=all_loss, p_mmd=mmd_loss, p_recon=recon_loss)
+#all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 10, p_epoch_loss=all_loss, p_mmd=mmd_loss, p_recon=recon_loss)
+#all_loss, mmd_loss, recon_loss = TrainModel(Vfcres, 1)
 PlotAllLoss([all_loss, mmd_loss, recon_loss], ["Loss", "MMD", "Recon"])
 PlotLoss(all_loss)
 
 # %%
-CheckpointModel(Vfcres, 'Vfcres-test', 1320, {'loss':all_loss, 'mmd':mmd_loss, 'recon':recon_loss})
+#CheckpointModel(Vfcres, 'Vfcres-fix-10hr', 1200, {'loss':all_loss, 'mmd':mmd_loss, 'recon':recon_loss})
 
 # %%
 PlotRandomLatentSample(Vfcres)
@@ -392,12 +398,6 @@ def TryPegasus(model, width=8, rows=8):
 TryPegasus(Vfcres)
 
 # %%
-import Utils
-import importlib
-importlib.reload(Utils)
-from Utils import *
-
-# %%
 horses, birds = HorseBirdTensors(count=1000)
 planes = GetTensorOfClass('airplane', 1000)
 cats = GetTensorOfClass('cat', 1000)
@@ -464,9 +464,15 @@ test_ds = torchvision.datasets.CIFAR10('./Dataset/cifar10', train=True, download
 
 # %%
 
-good_birds = [2, 16, 17, 154, 184, 200, 233]
+#good_birds = [2, 16, 17, 154, 184, 200, 233]
+#good_birds = [2, 16, 17, 233]
+good_birds = [2, 16, 17]
 
-good_horses = [228, 237, 292, 92]
+
+#good_horses = [228, 237, 292, 92]
+#good_horses = [92, 292]
+good_horses = [92, 292]
+
 
 def getImageofClass(img_ids, class_name):
     if class_name not in class_names:
@@ -490,7 +496,12 @@ def getImageofClass(img_ids, class_name):
     return good_images
 
 good_horse_imgs = getImageofClass(good_horses, 'horse')
+if len(good_horses) == 1:
+    good_horse_imgs = good_horse_imgs.repeat(2, 1, 1, 1)
+
 good_bird_imgs = getImageofClass(good_birds, 'bird')
+if len(good_birds) == 1:
+    good_bird_imgs = good_bird_imgs.repeat(2, 1, 1, 1)
 plotTensor(good_horse_imgs)
 plotTensor(good_bird_imgs)
 
@@ -533,7 +544,7 @@ def CreateSubsetLike(like_this, from_this, clusters = 10):
     print(as_classes[1])
     tensors_from_classes = []
     for i in range(clusters):
-        if len(as_classes[1][i])>0:
+        if len(as_classes[1][i])>0:                                     
             tensors_from_classes.append(tensorFromCluster(from_this, as_classes[0], i))
     return torch.cat(tensors_from_classes, dim=0)
     
@@ -548,15 +559,15 @@ print(goodish_birds.shape)
 # %%
 import random
 def TryPegasus3(model, h, b, width=8, rows=8):
-    ratio = 7
+    ratio = 8
 
     gpu_horses = h.to(device)
     gpu_birds = b.to(device)
     z_horses = model.encode(gpu_horses)
     z_birds = model.encode(gpu_birds)
 
-    h_rand_map = [random.randint(0, len(h)) for i in range(width*rows)]
-    b_rand_map = [random.randint(0, len(b)) for i in range(width*rows)]
+    h_rand_map = [random.randint(0, len(h)-1) for i in range(width*rows)]
+    b_rand_map = [random.randint(0, len(b)-1) for i in range(width*rows)]
     
     
     z_amalgum = torch.zeros(rows*width, latent_size)
@@ -576,9 +587,11 @@ def plotBestPegasus(imgs, column, row):
     plotTensor(imgs[i:i+1])
     
 
+
+# %%
 pegs = TryPegasus3(Vfcres, goodish_horses, goodish_birds)
 
 # %%
-plotBestPegasus(pegs, 7,5)
+plotBestPegasus(pegs, 6,6)
 
 # %%
