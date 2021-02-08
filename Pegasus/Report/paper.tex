@@ -29,7 +29,7 @@
     \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
 \end{center}
 The encoder decoder has the conventional shape of an Auto Encoder.
-The encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers as decribeed by He. et al. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size inspired by Barua et al's work on: fully connected convolutional GANs \cite{fccGAN}. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space Z is 128 dimensions. 
+The encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers as decribeed by He. et al. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size inspired by Barua et al's work on: fully connected convolutional GANs \cite{fccGAN}. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space Z is 256 dimensions. 
 
 The decoder is comprised of 3 fully connected layers D', upscaling to D. D is also based of the ResNet-18 architecture however where a conventional ResNet would scale down at the end of a convolutional layer D scales up.
 
