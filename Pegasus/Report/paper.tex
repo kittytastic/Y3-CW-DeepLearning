@@ -13,13 +13,13 @@
 \input{style/math_commands.tex}
 
 % replace this title with your own
-\title{Generating Pegasus with a Fully Connected and Variational Autoencoder architecture}
+\title{Generating Pegasus with a MMD Variational Autoencoder and semi-supervised learning}
 
 \begin{document}
 \maketitle
 \begin{abstract}
-    This abstract should be short and concise, about 8-10 lines long.
-    This paper proposes using a FC-VAE to generate images that look like a Pegasus.  Variational Autoencoders are a powerful class of generative models. Unlike Autoencoders they aim to regualise the distribution of their encoding to ensure that good properties are captured in thier latent space and hence more effectivley can be used to generatee new data. The paper investivates using k-means clustering over latent space for feature extraction. Then usees linear interrpolation between features to geneeatre peegasus images.
+    This paper proposes using a MMD-VAE, semi-supervised learning and latent space interpolation to generate images that look like a Pegasus. MMD variation auto encoders are similar to conventional Auto Encoders but replace KL-loss for MMD loss helping to combat several issues faced by VAE. This MMD-VAE is used in an unsupervised learning process to create a latent space encoder and decoder for the CIFAR-10 dataset. Linear interpolation between labeled horse and bird points in this dataset is then used to create a pegasus image. This method is enhanced using a semi-supervised \footnote{Although technically this isn't semi-supervised learning as it requires a fully labled dataset like CIFAR-10. Given such a dataset the author uses a problem specific semi-supervised technique within that dataset.} learning technique where the author selected "ideal" horse and bird images. These ideal images are then used to create subclasses within the horse and bird classes. These subclasses are used to enhance the interpolation process.
+
 \end{abstract}
 
 % this is where the sections begin
@@ -27,19 +27,38 @@
 \begin{center}
     \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
 \end{center}
-The network has the general VAE shape. E follows a ResNet \cite{ResNet} architecture with 18 convolution layers. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size. The latent space is 128 dimensions. D' is again 3 fully connected upscaling to D. D is also based of the ResNet-18 architecture however where ResNet would scale down at the end of a convolutional layer D scales up.
+The network follows has thee normal shape of an Auto Encoder.
+Thee encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers \ref{tab:res18}. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space is 128 dimensions. 
+
+The decoder is comprised of 3 fully connected layers D', upscaling to D. D is also based of the ResNet-18 architecture however where a conventional ResNet would scale down at the end of a convolutional layer D scales up.
 
 
-
-\begin{tabular}{c|c|c|c}
-    a&b&c&d\\
+\begin{figure}
+    \begin{center}
+\begin{tabular}{c|c}
+    Layer&Construction\\
     \hline
-    a & $\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix} \times 1$&c&d\\
+    1 & $7\times7$ kernel, $64$ channels, stride $2$\\
+    2 & $3\times3$ max pool, stride $2$\\
+    3 & $\begin{bmatrix} 3 \times 3 & 64 \\ 3 \times 3 & 64 \end{bmatrix} \times 2$\\
+    4 & $\begin{bmatrix} 3 \times 3 & 128 \\ 3 \times 3 & 128 \end{bmatrix} \times 2$\\
+    5 & $\begin{bmatrix} 3 \times 3 & 256 \\ 3 \times 3 & 256 \end{bmatrix} \times 2$\\
+    6 & $\begin{bmatrix} 3 \times 3 & 512 \\ 3 \times 3 & 512 \end{bmatrix} \times 2$\\
 \end{tabular}
+\end{center}
+\caption{ResNet-18 architecture}
+\label{tab:res18}
+\end{figure}
 
+
+\begin{center}
+    \includegraphics[width=0.5\textwidth]{figures/clustering.png}
+\end{center}
+
+Once the MMD-VAE is trained the horse and bird classes are subclassified and a pegasus generated through linear interpolation.
 
 \section{Methodology}
-I use the MMD-VAE loss function \cite{infovae}. 
+The network reduced the MMD-VAE loss function \cite{infovae}. 
 There are 2 terms in the MMD-VAE loss function. Firstly, the reconstruction loss:
 \begin{equation}
     \mathcal{L}_{\textrm{recon}} = \mathbb{E}_{p_{\textrm{data}}(x)} \mathbb{E}_{q_\phi (z|x)} [\log p_\theta(x|z)]
@@ -61,24 +80,12 @@ The full loss function is:
 
 where $q_\phi(z) =  \mathbb{E}[q_\phi(z|x)]$ and $\lambda$ is a scaling constant.
 
-Batches of horse and bird images are then subclassified using semi-supervised learning to create an improved dataset of horse and bird images. Random images from these dataset are then lineally interpolated between in latent space and the result decoded to create a pegasus image. 
-
-
-
-The method is to train an autoencoder~\cite{kramer1991nonlinear}, by minimising the squared L2 loss:
-\begin{equation}
-    \mathcal{L}_{\textrm{AE}} = \mathbb{E}_{\vx\sim p_{\textrm{data}}}[\, \lVert \vx - D(E(\vx)) \rVert^2 ]
-\end{equation}
-The methodology should be very concise and the mathematical notation should try to follow \href{https://v1.overleaf.com/latex/templates/template-for-iclr-2021-conference-submission/mmpfhsxmqdkp.pdf}{the ICLR conference guidlines \faExternalLink}. If you are not familiar with \LaTeX, you can use \href{https://www.codecogs.com/latex/eqneditor.php}{this online \LaTeX~equation editor \faExternalLink}. You may want to include an architectural diagram:
-\begin{center}
-    \includegraphics[width=0.5\textwidth]{figures/architecture.pdf}
-\end{center}
-The architectural diagram above was created using Inkscape and exported to a PDF. This was then uploaded to the figures directory on the left.
+Batches of horse and bird images are then subclassified to create an improved dataset of horse and bird images. Random images from these dataset are then lineally interpolated between in latent space and the result decoded to create a pegasus image. 
 
 \section{Class subclassification}
 There is a very board range of horse and bird images in CIFAR-10. Some images contain useful features such as white horses or birds' wings. Others images predominantly contain unhelpful features such as beaks. It seems sensible to subclassify the horse and bird classes to give us better images to create a pegasus with. To do this I used semi-supervised learning within the horse and bird classes. Firstly, I clustered a sample of horse/bird pictures in latent space using k-means. Then, using a handful of "good" bird and horse images (\ref{fig:good_horses}), I selected the "good" clusters which should contain many similar features to the example images. If the "good" images fell in different cluster I took the union of these cluster.
 
-I also experimented with clustering over the union of 2 classes and creating subclasses from the union/difference of these classes. The idea being classes may share features. For example, the union of birds and planes could be wings. The difference between between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, due to the limitation of my feature encodings (as talked about in limitations) class intersection was mainly based off global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
+I also experimented with clustering over the union of 2 classes and creating subclasses from the union/difference of these classes. The idea being classes may share features. For example, the union of birds and planes could be wings. The difference between between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, class intersection was mainly based off global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
 
 \begin{figure}
     \begin{center}
