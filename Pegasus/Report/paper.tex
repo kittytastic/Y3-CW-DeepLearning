@@ -101,16 +101,27 @@ From this batch, the most Pegasus-like image is:
     \includegraphics[width=0.1\textwidth]{figures/kinda_allright1.png}
 \end{center}
 
-As you can see the generated images lack crisp details however general siloutes are present. 
+As you can see the is a wide range of pegasuses. Some look rather good like and others are complete non-sense. Using interpolation made the output pegasus very sensative to its' 2 input images. Although, subclassification improved this it certianly didn't solve the issue.  
 
 \section{Limitations}
-In hind-sight a ResNet was probably overkill given the avaliable training time.
+The encoder failed to recreate fine details and textures. I susspect this is a comfounding error from: the architectual design; data preperation; training stratery and loss weightings; and insufficent training time for the size of the network.
+
+The subclassification of images was noisy, so although it reduced the domain of horse and bird images it didn't entrly remove unwanted images like ostrich mug shots (of which CIFAR-10 contains many). 
+
+Finally, the method of interrpolation between a horse and a bird to create a pegasus is funemeenattly flawed. A Pegasus is a horse with wings, not a bird horse amalgum. This is talked about more in the improvemnts section.  
+
 
 
 \section{Possible Improvements}
-There may be some scope for improvement by tweaking the ResNet construction. In the interest of time I used the exact construction as described in \cite{ResNet}. However, Making the ResNet shallower would have helped to speed up training hence more training could have been done in a limited time frame. Also given that the described architecture was developed for the 112x112 ImageNet images its likely not as well suited for 32x32 CIFAR-10 images. In particular the initial 7x7 convolution is likely overkill for CIFAR-10.
+There may be some scope for improvement by \textbf{tweaking the ResNet} construction. In the interest of time I used the exact construction as described in \cite{ResNet}. However, Making the ResNet shallower would have helped to speed up training hence more training could have been done in a limited time frame. Also given that the described architecture was developed for the 112x112 ImageNet images its likely not as well suited for 32x32 CIFAR-10 images. In particular the initial 7x7 convolution is likely overkill for CIFAR-10.
 
-Subclass similarities
+\textbf{Cylindrical anealing} of MMD loss. The model uses the constant $\lambda=1$ for the MMD loss. This leads to vanishing MMD loss, much like KL-VAEs suffer vanishing KL-loss. Fu. et.al. \cite{cylindricalAnnealing} proposed the simple technique of cylindrically annealing $\lambda$ which they showed substantially improved reconstruction error. I susspect that cylindrical annealing would benifit MMD-VAEs likewise.
+
+\textbf{Data preparation} could have been improved. I used random horizontal flips of the data but didn't have time to explore any other data preparation techniques. For example introducing color jitter may have helped the VAE to learn more color specific latent features which may have helped creating subclasses. Also random crops and scales may have helped the VAE better learn features such as wings.   
+
+\textbf{Subclasses} definetly added to the final pegasus, filtering out many poor images, however there is still alot of room form Improvements. The subclasses generally differed by color composition rather than feature. For example a black horse a robin and an ostrich face may be clustered as they share the same background. Subclasses could be created using permuted data (random scale,crops e.t.c.). And then ideal images permuted and matched to clusters in a probabilstic manner. This could give much tighter subclasses.
+
+\textbf{Replacing interpolation} would help with creating better pegasus. If you extracted the latent reperesntation of a wing and then applied this to the latent reperesntation of a horse you would likely generate better pegasus. There are many methods you could apply this wing from simple addition, to interpolation to sampling based methods. There are also many methods you could use to extract the latent representation of a wing, I would first investigate using Hierarchical Clustering.
 
 
 \section*{Bonuses}
