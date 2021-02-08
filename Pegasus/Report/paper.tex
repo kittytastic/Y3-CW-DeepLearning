@@ -7,6 +7,7 @@
 \usepackage{biblatex}
 \usepackage{fontawesome}
 \usepackage[hidelinks]{hyperref}
+\usepackage{subcaption}
 
 % to reference, paste the BibTeX obtained from google scholar into references.bib
 \addbibresource{references.bib}
@@ -28,27 +29,10 @@
     \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
 \end{center}
 The network follows has thee normal shape of an Auto Encoder.
-Thee encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers \ref{tab:res18}. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space is 128 dimensions. 
+Thee encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers as decribeed by He. et al. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space is 128 dimensions. 
 
 The decoder is comprised of 3 fully connected layers D', upscaling to D. D is also based of the ResNet-18 architecture however where a conventional ResNet would scale down at the end of a convolutional layer D scales up.
 
-
-\begin{figure}
-    \begin{center}
-\begin{tabular}{c|c}
-    Layer&Construction\\
-    \hline
-    1 & $7\times7$ kernel, $64$ channels, stride $2$\\
-    2 & $3\times3$ max pool, stride $2$\\
-    3 & $\begin{bmatrix} 3 \times 3 & 64 \\ 3 \times 3 & 64 \end{bmatrix} \times 2$\\
-    4 & $\begin{bmatrix} 3 \times 3 & 128 \\ 3 \times 3 & 128 \end{bmatrix} \times 2$\\
-    5 & $\begin{bmatrix} 3 \times 3 & 256 \\ 3 \times 3 & 256 \end{bmatrix} \times 2$\\
-    6 & $\begin{bmatrix} 3 \times 3 & 512 \\ 3 \times 3 & 512 \end{bmatrix} \times 2$\\
-\end{tabular}
-\end{center}
-\caption{ResNet-18 architecture}
-\label{tab:res18}
-\end{figure}
 
 
 \begin{center}
@@ -87,12 +71,24 @@ There is a huge variety of horse and bird images in CIFAR-10. Some images contai
 
 I also experimented with clustering over the union of 2 classes and creating subclasses from the union/difference of these classes. The idea being different classes may share features. For example, the union of birds and planes could be wings. The difference between between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, clusters where mainly formed round global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
 
+
 \begin{figure}
     \begin{center}
-        \includegraphics[width=0.3\textwidth]{figures/good_horses_cropped.png}
+    \begin{subfigure}{.2\textwidth}
+    \begin{center}
+        \includegraphics[width=.95\textwidth]{figures/good_horses_cropped.png}
     \end{center}
-    \caption{"Ideal" white horses used to select clusters}
+    \caption{"Ideal" white horses}
+\end{subfigure}
+\begin{subfigure}{.7\textwidth}
+    \begin{center}
+        \includegraphics[width=.95\textwidth]{figures/white_horse_class.png}
+    \end{center}
+    \caption{Corresponding cluster}
+\end{subfigure}
+\caption{Using selected images to create subclasses}
     \label{fig:good_horses}
+\end{center}
 \end{figure}
 
 \section{Results}
@@ -108,7 +104,7 @@ From this batch, the most Pegasus-like image is:
 As you can see there is a wide range of pegasuses. Some look rather good like and others are complete non-sense. Using linear interpolation made the output pegasus very sensitive to its' 2 input images. Although, subclassification improved this it certainly didn't solve the issue.  
 
 \section{Limitations}
-The encoder failed to recreate fine details and textures. I suspect this is a confounding error accumulating through: the overkill MMD-VAE architecture; basic data preparation; basic training strategy; and insufficient training time for the size of the network.
+The encoder failed to recreate fine details and textures. I suspect this is a confounding error accumulating through: the overkill ResNet architecture; basic data preparation; basic training strategy; and insufficient training time for the size of the network.
 
 The subclassification of images was noisy, so although it reduced the domain of horse and bird images it didn't entirely remove unwanted images like ostriches (of which CIFAR-10 contains many). 
 
