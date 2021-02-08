@@ -87,5 +87,6 @@ def PlotAllLoss(losses, loss_names):
 def plotTensor(tensor):
     plt.rcParams['figure.dpi'] = 175
     plt.grid(False)
+    plt.axis('off')
     plt.imshow(torchvision.utils.make_grid(tensor).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
     plt.show()
