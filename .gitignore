@@ -3,6 +3,10 @@
 *.ipynb
 *.chkpt
 **/__pycache__/**
+Gravitar/*.png
+Gravitar/video*
+**/tmp/**
+Pegasus/Diagrams
 
 *.aux
 *.bcf
