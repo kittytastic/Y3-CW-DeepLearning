@@ -19,7 +19,7 @@
 \maketitle
 \begin{abstract}
     This abstract should be short and concise, about 8-10 lines long.
-    This paper proposes using a FC-VAE to generate images that look like a Pegasus.  Variational Autoencoders are a powerful class of generative models. Unlike Autoencoders they aim to regualise the distribution of their encoding to ensure that good properties are captured in thier latent space and hencee moree effectivley can be used to generatee new data. The paper investivates using k-means clustering over latent space for feature extraction. Then usees linear interrpolation between features to geneeatre peegasus images.
+    This paper proposes using a FC-VAE to generate images that look like a Pegasus.  Variational Autoencoders are a powerful class of generative models. Unlike Autoencoders they aim to regualise the distribution of their encoding to ensure that good properties are captured in thier latent space and hence more effectivley can be used to generatee new data. The paper investivates using k-means clustering over latent space for feature extraction. Then usees linear interrpolation between features to geneeatre peegasus images.
 \end{abstract}
 
 % this is where the sections begin
@@ -27,7 +27,7 @@
 \begin{center}
     \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
 \end{center}
-The network has the general VAE shape. E follows a ResNet \cite{ResNet} architecture with 18 convolution layers. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the resnet to latent space size. The latent space is 128 dimensions. D' is again 3 fully connected upscaling to D. D is also based of the ResNet-18 architecture however where ResNet would scale down at the end of a convolutional layer D scales up.
+The network has the general VAE shape. E follows a ResNet \cite{ResNet} architecture with 18 convolution layers. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size. The latent space is 128 dimensions. D' is again 3 fully connected upscaling to D. D is also based of the ResNet-18 architecture however where ResNet would scale down at the end of a convolutional layer D scales up.
 
 
 
@@ -39,6 +39,32 @@ The network has the general VAE shape. E follows a ResNet \cite{ResNet} architec
 
 
 \section{Methodology}
+I use the MMD-VAE loss function \cite{infovae}. 
+There are 2 terms in the MMD-VAE loss function. Firstly, the reconstruction loss:
+\begin{equation}
+    \mathcal{L}_{\textrm{recon}} = \mathbb{E}_{p_{\textrm{data}}(x)} \mathbb{E}_{q_\phi (z|x)} [\log p_\theta(x|z)]
+\end{equation}
+
+Where $p_\theta(x|z)$ is approximated by networks D', D and parameterized by $\theta$ and likewise $q_\phi(z|x)$ is approximated by networks E, E' parameterized by $\phi$.
+
+
+Secondly the Maximum Mean Discrepancy \cite{mmd}. Which is used to fit latent codes $z$ to prior $p(z)$.
+\begin{equation}
+    \textrm{MMD}(p(z) \lVert q(z)) = \mathbb{E}_{p(z), p_(z')}[k(z, z')] + \mathbb{E}_{q(z), q_(z')}[k(z, z')] - 2 \mathbb{E}_{p(z), q_(z')}[k(z, z')]
+\end{equation}
+where $k(z, z')$ is the gaussian kernel $k(z, z')={\rm e}^{-\frac{\lVert z-z' \rVert^2}{2\sigma^2}}$
+
+The full loss function is:
+\begin{equation}
+    \mathcal{L}_\textrm{MMD-VAE} = \lambda \textrm{MMD}(q_\phi (z) \lVert p(z)) + \mathcal{L}_{\textrm{recon}}
+\end{equation}
+
+where $q_\phi(z) =  \mathbb{E}[q_\phi(z|x)]$ and $\lambda$ is a scaling constant.
+
+Batches of horse and bird images are then subclassified using semi-supervised learning to create an improved dataset of horse and bird images. Random images from these dataset are then lineally interpolated between in latent space and the result decoded to create a pegasus image. 
+
+
+
 The method is to train an autoencoder~\cite{kramer1991nonlinear}, by minimising the squared L2 loss:
 \begin{equation}
     \mathcal{L}_{\textrm{AE}} = \mathbb{E}_{\vx\sim p_{\textrm{data}}}[\, \lVert \vx - D(E(\vx)) \rVert^2 ]
@@ -50,8 +76,9 @@ The methodology should be very concise and the mathematical notation should try 
 The architectural diagram above was created using Inkscape and exported to a PDF. This was then uploaded to the figures directory on the left.
 
 \section{Class subclassification}
-To make a pegasus you may initially think of it as a cross between a horse and a bird. However this poses issues, namely that birds contain many features you would not expect to find on a pegasus, such as a beak. Given that we intend to create our pegasus via interpolation between a picture of a horse and a picture of a bird it would be useful to select pictures of birds that have useful features i.e. wings and exclude pictures containing useless features like beaks. Likewise given we want a white pegasus it would be useful to be using pictures of white horses.
-To do this I use use semi-supervised learning. I cluster a batch of a class e.g. horses, using k-means in latent space. Then I find which cluster(s) a small handful of selected examples \ref{fig:good_horses} are in. These clusters are then selected as subclasses which are later used in Pegasus generation.    
+There is a very board range of horse and bird images in CIFAR-10. Some images contain useful features such as white horses or birds' wings. Others images predominantly contain unhelpful features such as beaks. It seems sensible to subclassify the horse and bird classes to give us better images to create a pegasus with. To do this I used semi-supervised learning within the horse and bird classes. Firstly, I clustered a sample of horse/bird pictures in latent space using k-means. Then, using a handful of "good" bird and horse images (\ref{fig:good_horses}), I selected the "good" clusters which should contain many similar features to the example images. If the "good" images fell in different cluster I took the union of these cluster.
+
+I also experimented with clustering over the union of 2 classes and creating subclasses from the union/difference of these classes. The idea being classes may share features. For example, the union of birds and planes could be wings. The difference between between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, due to the limitation of my feature encodings (as talked about in limitations) class intersection was mainly based off global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
 
 \begin{figure}
     \begin{center}
@@ -60,13 +87,12 @@ To do this I use use semi-supervised learning. I cluster a batch of a class e.g.
     \caption{White horses used to select clusters}
     \label{fig:good_horses}
 \end{figure}
-...    WORDS
 
 \section{Generating a Pegasus}
 The generation of a pegasus is relteivly simple. 
 
 \section{Results}
-The results look very blurry, where the best batch of images looks like this:
+The best batch of pegasus images looks like this:
 \begin{center}
     \includegraphics[width=0.5\textwidth]{figures/kinda_allright64.png}
 \end{center}
@@ -75,12 +101,20 @@ From this batch, the most Pegasus-like image is:
     \includegraphics[width=0.1\textwidth]{figures/kinda_allright1.png}
 \end{center}
 
+As you can see the generated images lack crisp details however general siloutes are present. 
+
 \section{Limitations}
 In hind-sight a ResNet was probably overkill given the avaliable training time.
-It's very difficult to see anything that looks like a Pegasus. In the future, this could be improved by training for more than 10 epochs, although this was not possible due to the time constraints.
+
+
+\section{Possible Improvements}
+There may be some scope for improvement by tweaking the ResNet construction. In the interest of time I used the exact construction as described in \cite{ResNet}. However, Making the ResNet shallower would have helped to speed up training hence more training could have been done in a limited time frame. Also given that the described architecture was developed for the 112x112 ImageNet images its likely not as well suited for 32x32 CIFAR-10 images. In particular the initial 7x7 convolution is likely overkill for CIFAR-10.
+
+Subclass similarities
+
 
 \section*{Bonuses}
-This submission has a total bonus of -4 marks (a penalty), as it is trained only on CIFAR-10, and the Pegasus has a dark body colour.
+This submission has a total bonus of -2 marks as it is only trained on CIFAR-10.
 
 % you can have an unlimited number of references (they can go on the 5th page and span many additional pages without any penalty)
 \printbibliography
