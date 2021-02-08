@@ -52,3 +52,7 @@ https://towardsdatascience.com/proximal-policy-optimization-ppo-with-sonic-the-h
 
 
 https://danieltakeshi.github.io/2016/11/25/frame-skipping-and-preprocessing-for-deep-q-networks-on-atari-2600-games/
+
+https://medium.com/aureliantactics/ppo-hyperparameters-and-ranges-6fc2d29bccbe
+
+cnn sizes: https://github.com/openai/baselines/blob/d3fed181b57f61013698521f4e940594364253e9/baselines/ppo1/cnn_policy.py
