@@ -90,14 +90,14 @@ class ConvFrames(nn.Module):
         # <- 4 x 80 x 80
         self.conv1 = Block(frames, 16, 4, 0, 8) # -> 8 x 39 x 39
         self.conv2 = Block(16, 32, 2, 0, 4) # -> 16 x 19 x 19
-        #self.conv3 = Block(64, 128, 2, 0, 3) # -> 32 x 9 x 9
+        self.conv3 = Block(32, 32, 1, 1, 3) # -> 32 x 9 x 9
 
     def forward(self, x):
         x = self.conv1(x)
         #printMeta(x, 'con1')
         x = self.conv2(x)
         #printMeta(x, 'conv2')
-        #x = self.conv3(x)
+        x = self.conv3(x)
         #printMeta(x, 'conv3')
         x = x.flatten(1)
         return x
@@ -148,23 +148,35 @@ class ActorCritic(nn.Module):
             for mini_experience_batch in miniBatchIter(mini_batch_size, experience):
             
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
+
+                assertShape(state, 4)
+                assertShape(action, 1)
+                assertShape(old_log_probs, 1)
+                assertShape(retruns, 1)
+                assertShape(advantage, 1)
                 
                 dist = self.getActionDist(state)
-                #print("Dist: %s"%dist)
-                #value = self.getCriticFor(state).flatten()
+               
                 value = self.getCriticFor(state).squeeze()
-                #print("All value: %s"%value)
+                assertShape(value, 1)
+
+                
                 entropy = dist.entropy().mean()
-                #print("entropy: %s"%str(entropy))
-                #print("Actions: %s"%action)
+                assertShape(entropy, 0)
+
                 new_log_probs = dist.log_prob(action)
+                assertShape(new_log_probs, 1)
+
                 #print("new_log_probs: %s"%new_log_probs)
                 #print("old_log_probs: %s"%(old_log_probs))
                 
                 ratio = (new_log_probs - old_log_probs).exp()
-                #print("ratio: %s"%str(ratio))
+                assertShape(ratio, 1)
+
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0-clip_epsilon, 1.0+clip_epsilon)*advantage
+                assertShape(surr1, 1)
+                assertShape(surr2, 1)
 
                 #print("Value: %s"%str(value))
                 #print("Returns: %s"%str(returns))
@@ -174,9 +186,11 @@ class ActorCritic(nn.Module):
                 #print("Surr 2: %s"%surr2)
                 #print("Min: %s"%torch.min(surr1, surr2))
 
+                
                 actor_loss = - torch.min(surr1, surr2).mean()
                 critic_loss = 0.5 * (retruns - value).pow(2).mean()
-                
+                assertShape(retruns - value, 1)
+
                 #print(actor_loss)
                 #print(critic_loss)
 
@@ -230,8 +244,6 @@ def testReward(env, actor_critic, device, frame_stack_depth):
 
 def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, steps=None):
 
-    #frame_stack = FrameStack(frame_stack_depth, device)
-
     rewards = torch.zeros(steps, requires_grad=False, device=device)
     states = torch.zeros(steps, frame_stack.depth, frame_stack.h, frame_stack.w, requires_grad=False, device=device)
     actions = torch.zeros(steps, requires_grad=False, device=device)
@@ -240,13 +252,11 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
     
 
-    #state = env.reset()
-    #frame_stack.setFirstFrame(state)
+    
     episodes_scores = []
     total_reward = partial_reward
     for e in range(steps):
         state = frame_stack.asState()
-        #printMeta(state, "state")
         action_distribution = actor_critic.getActionDist(state)
         #print("action_distribution: %s"%action_distribution)
         action = action_distribution.sample()
@@ -298,15 +308,12 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
 
 def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, tau=None):
     masks, rewards, values = itemgetter('masks', 'rewards', 'values' )(raw_experience)
-    
-    #print(tau, gamma)
-    #print(next_value)
 
     values = torch.hstack((values, next_value))
-    #printMeta(values, 'values')
-    #print(values)
-    #print(rewards)
-    #print(masks)
+
+    assertShape(masks, 1)
+    assertShape(rewards, 1)
+    assertShape(values, 1)
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
@@ -315,14 +322,9 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
         #print("Reward: %s    Value:  %s     Value+1: %s  Mask: %s"%(str(rewards[step]), str(values[step]), str(values[step+1]), str(masks[step])))
 
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
-        gae = delta + gamma * tau * masks[step] * gae
-        
-        #print(gae)
-        #retruns.insert(0, gae + values[step])
+        gae = delta + gamma * tau * masks[step] * gae    
         returns[step] = gae + values[step]
-        #print(returns[step])
-    
-    #print(returns)
+        
     return {**raw_experience, 'returns':returns}
 
 def miniBatchIter(mini_batch_size, experiences):
@@ -417,22 +419,27 @@ def debugTensor(tensor):
     plt.imshow(torchvision.utils.make_grid(tensor, normalize=True).cpu().data.permute(0,2,1).contiguous().permute(2,1,0), cmap=plt.cm.binary)
     plt.show()
 
+def assertShape(tensor, dim):
+    assert(len(tensor.shape) == dim)
+
 # Hyper Parameters
 discount_gamma = 0.99
 GAE_tau = 0.95
 
 
 
-entropy_coeff = 0.01
+entropy_coeff = 0.02
+entropy_aneal_target = 0.001 
+entropy_aneal_rounds = 150 
 vf_coeff = 1
-epsilon = 0.2
+epsilon = 0.1
 
-learning_rate = 0.003
+learning_rate = 0.001
 
-epochs = 4
+epochs = 1
 mini_batch_size = 8
-episodes = 50
-timesteps = 1024
+episodes = 1
+timesteps = 10
 frame_stack_depth = 4
 
 # Logging parameters
@@ -454,6 +461,7 @@ env_name = env_names['breakout']
 env = gym.make(env_name)
 env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%video_every)==0, force=True)
 env_test = gym.make(env_name)
+
 
 
 import time
@@ -570,10 +578,20 @@ for i in episode_iter:
     #print(returns)
     #print(advantage)
 
+    assertShape(returns, 1)
+    assertShape(log_probs, 1)
+    assertShape(states, 4)
+    assertShape(actions, 1)
+    assertShape(advantage, 1)
+
+
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
+
+    current_aneal = entropy_coeff - ((entropy_coeff - entropy_aneal_target)*min((i/entropy_aneal_rounds),1))
+    #print(current_aneal)
     losses = model.learn(epochs, experience, device,
         mini_batch_size=mini_batch_size,
-        entropy_coeff=entropy_coeff,
+        entropy_coeff=current_aneal,
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon)
 
