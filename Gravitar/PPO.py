@@ -236,7 +236,8 @@ def testReward(env, actor_critic, device, frame_stack_depth):
         action_distribution = actor_critic.getActionDist(state)
         action = action_distribution.sample()
 
-        next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        #next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        next_frame, reward, done = playFrames(env, action.detach().cpu().numpy(), 4)
         
         total_reward += reward
         frame_stack.pushFrame(next_frame)
@@ -244,6 +245,18 @@ def testReward(env, actor_critic, device, frame_stack_depth):
     return total_reward
 
 
+def playFrames(env, action, frame_count):
+    i = 0
+    done = False
+    total_reward = 0
+    next_frame = None
+    while not done and i<frame_count:
+        i+=1
+
+        next_frame, reward, done, _ = env.step(action)
+        total_reward += reward
+
+    return next_frame, total_reward, done
 
 
 def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, steps=None):
@@ -271,7 +284,8 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
         #print("estimated value: %s Taking action: %s"%(estimated_value, action))
        
 
-        next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        #next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        next_frame, reward, done = playFrames(env, action.detach().cpu().numpy(), 4)
 
         log_prob = action_distribution.log_prob(action)
         #print("log_prob: %s"%log_prob)
