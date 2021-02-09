@@ -29,6 +29,7 @@ class TransformFrame(nn.Module):
     def forward(self, x):
         x = x[20:200, :160]
         grey_image = x.mean(dim=2)
+        grey_image = grey_image/255.0
         grey_image = grey_image.unsqueeze(0)
         smaller = torchvision.transforms.functional.resize(grey_image, size=(80,80))
         return smaller.squeeze()
@@ -131,14 +132,15 @@ class ActorCritic(nn.Module):
        
 
     def getActionDist(self, frames):
-        actor_ops = self.actor(frames)
-        dist      = torch.distributions.Categorical(actor_ops)
+        probs = self.actor(frames)
+        #print(actor_ops)
+        dist      = torch.distributions.Categorical(probs)
         return dist
 
     def getCriticFor(self, frames):
         return self.critic(frames)
 
-    def learn(self, epochs, experience, device, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None): 
+    def learn(self, epochs, experience, device, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None, plot_grad=False): 
         loss_acc = torch.zeros(1, device=device, requires_grad=False)
         entropy_acc = torch.zeros(1, device=device, requires_grad=False)
         actor_acc = torch.zeros(1, device=device, requires_grad=False)
@@ -149,34 +151,34 @@ class ActorCritic(nn.Module):
             
                 state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
 
-                assertShape(state, 4)
-                assertShape(action, 1)
-                assertShape(old_log_probs, 1)
-                assertShape(retruns, 1)
-                assertShape(advantage, 1)
+                #assertShape(state, 4)
+                #assertShape(action, 1)
+                #assertShape(old_log_probs, 1)
+                #assertShape(retruns, 1)
+                #assertShape(advantage, 1)
                 
                 dist = self.getActionDist(state)
                
                 value = self.getCriticFor(state).squeeze()
-                assertShape(value, 1)
+                #assertShape(value, 1)
 
                 
                 entropy = dist.entropy().mean()
-                assertShape(entropy, 0)
+                #assertShape(entropy, 0)
 
                 new_log_probs = dist.log_prob(action)
-                assertShape(new_log_probs, 1)
+                #assertShape(new_log_probs, 1)
 
                 #print("new_log_probs: %s"%new_log_probs)
                 #print("old_log_probs: %s"%(old_log_probs))
                 
                 ratio = (new_log_probs - old_log_probs).exp()
-                assertShape(ratio, 1)
+                #assertShape(ratio, 1)
 
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0-clip_epsilon, 1.0+clip_epsilon)*advantage
-                assertShape(surr1, 1)
-                assertShape(surr2, 1)
+                #assertShape(surr1, 1)
+                #assertShape(surr2, 1)
 
                 #print("Value: %s"%str(value))
                 #print("Returns: %s"%str(returns))
@@ -189,7 +191,7 @@ class ActorCritic(nn.Module):
                 
                 actor_loss = - torch.min(surr1, surr2).mean()
                 critic_loss = 0.5 * (retruns - value).pow(2).mean()
-                assertShape(retruns - value, 1)
+                #assertShape(retruns - value, 1)
 
                 #print(actor_loss)
                 #print(critic_loss)
@@ -208,6 +210,8 @@ class ActorCritic(nn.Module):
 
                 self.optimiser.zero_grad()
                 loss.backward()
+                if plot_grad:
+                    plot_grad_flow(self.named_parameters())
                 self.optimiser.step()
         
         loss_acc = loss_acc.mean().detach().cpu().numpy()
@@ -311,9 +315,9 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
 
     values = torch.hstack((values, next_value))
 
-    assertShape(masks, 1)
-    assertShape(rewards, 1)
-    assertShape(values, 1)
+    #assertShape(masks, 1)
+    #assertShape(rewards, 1)
+    #assertShape(values, 1)
 
     # Calculate General advantage estimation and returns for each step
     gae = 0
@@ -411,6 +415,37 @@ def plotFramestack(tensor, name):
     plt.savefig('tmp/%s.png'%name)
     plt.close()
 
+# https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/8
+from matplotlib.lines import Line2D
+def plot_grad_flow(named_parameters):
+    '''Plots the gradients flowing through different layers in the net during training.
+    Can be used for checking for possible gradient vanishing / exploding problems.
+    
+    Usage: Plug this function in Trainer class after loss.backwards() as 
+    "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
+    ave_grads = []
+    max_grads= []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+            max_grads.append(p.grad.abs().max())
+    
+    #plt.tight_layout()
+    plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
+    plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+    plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
+    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(left=0, right=len(ave_grads))
+    plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    plt.legend([Line2D([0], [0], color="c", lw=4),
+                Line2D([0], [0], color="b", lw=4),
+                Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
 def debugTensor(tensor):
     plt.rcParams['figure.dpi'] = 175
@@ -428,18 +463,18 @@ GAE_tau = 0.95
 
 
 
-entropy_coeff = 0.02
-entropy_aneal_target = 0.001 
+entropy_coeff = 0.01
+entropy_aneal_target = 0.01 
 entropy_aneal_rounds = 150 
 vf_coeff = 1
 epsilon = 0.1
 
 learning_rate = 0.001
 
-epochs = 1
-mini_batch_size = 8
-episodes = 1
-timesteps = 10
+epochs = 3
+mini_batch_size = 32
+episodes = 300
+timesteps = 512
 frame_stack_depth = 4
 
 # Logging parameters
@@ -542,7 +577,7 @@ experiment_scores = []
 
 all_loss = {'loss':[], 'entropy':[], 'actor':[], 'critic':[]}
 
-frame_stack = FrameStack(frame_stack_depth, device)
+frame_stack = FrameStack(frame_stack_depth, device, skip=1)
 state = env.reset()
 frame_stack.setFirstFrame(state)
 
@@ -550,6 +585,7 @@ partial_reward = 0
 curr_episode = 0
 
 episode_iter = trange(0, episodes)
+
 for i in episode_iter:
 
     raw_experience, next_value, frame_stack, scores, partial_reward = accrueExperience(env, model, frame_stack, partial_reward, device, steps=timesteps)
@@ -574,15 +610,18 @@ for i in episode_iter:
     actions   = experience['actions']
     #printMeta(actions, 'actions')
     advantage = torch.Tensor.detach(returns - values)
+    #print(advantage)
+    #advantage = (advantage - advantage.mean())/advantage.std()
+    #print(advantage)
     #printMeta(advantage, 'advantage')
     #print(returns)
     #print(advantage)
 
-    assertShape(returns, 1)
-    assertShape(log_probs, 1)
-    assertShape(states, 4)
-    assertShape(actions, 1)
-    assertShape(advantage, 1)
+    #assertShape(returns, 1)
+    #assertShape(log_probs, 1)
+    #assertShape(states, 4)
+    #assertShape(actions, 1)
+    #assertShape(advantage, 1)
 
 
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
@@ -593,7 +632,13 @@ for i in episode_iter:
         mini_batch_size=mini_batch_size,
         entropy_coeff=current_aneal,
         vf_coeff=vf_coeff,
-        clip_epsilon=epsilon)
+        clip_epsilon=epsilon,
+        plot_grad=(i%10==0))
+
+    if i % 10 == 0:
+        plt.savefig("tmp/grad%d.png"%i, bbox_inches='tight')
+        plt.close()
+
 
     accumulateLoss(all_loss, losses)
     
