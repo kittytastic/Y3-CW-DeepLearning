@@ -19,7 +19,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-    This paper proposes using a MMD-VAE, semi-supervised learning and latent space interpolation to generate images that look like a Pegasus. MMD Variation Auto Encoders are similar to conventional Auto Encoders but replace KL-loss for MMD-loss, helping to combat several issues faced by VAEs. The MMD-VAE is used in an unsupervised learning process to create a latent space encoder and decoder for the CIFAR-10 dataset. Linear interpolation between labeled horse and bird images is then employed to create a pegasus image. This method is enhanced using a semi-supervised \footnote{Although technically this isn't semi-supervised learning as it requires a fully labeled dataset like CIFAR-10. Given such a dataset the author uses a problem specific semi-supervised technique within that dataset.} learning technique where the author selects "ideal" horse and bird images. These ideal images are then used to create subclasses within the horse and bird classes. These subclasses are used to enhance the interpolation process.
+    This paper proposes using a MMD-VAE, semi-supervised learning and latent space interpolation to generate images that look like a Pegasus. MMD Variation Auto Encoders are similar to conventional VAE but replace KL-loss for MMD-loss, helping to combat several issues faced by VAEs. The MMD-VAE is used in an unsupervised learning process to create a latent space encoder and decoder for the CIFAR-10 dataset. Linear interpolation between labeled horse and bird images is then employed to create a pegasus image. This method is enhanced using a semi-supervised \footnote{Although technically this isn't semi-supervised learning as it requires a fully labeled dataset like CIFAR-10. Given such a dataset the author uses a problem specific semi-supervised technique within the labeled dataset.} learning technique where the author selects "ideal" horse and bird images. These ideal images are then used to create subclasses within the horse and bird classes. These subclasses are used to enhance the interpolation process.
 
 \end{abstract}
 
@@ -29,9 +29,9 @@
     \includegraphics[width=0.5\textwidth]{figures/Encoder.png}
 \end{center}
 The encoder decoder has the conventional shape of an Auto Encoder.
-The encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers as decribeed by He. et al. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size inspired by Barua et al's work on: fully connected convolutional GANs \cite{fccGAN}. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space Z is 256 dimensions. 
+The encoder is comprised of E and E' where E follows a ResNet \cite{ResNet} architecture with 18 convolution layers as decribeed by He. et al. E' is 3 fully connected layers linearly reducing in size in logspace from the output size of the ResNet to latent space size inspired by Barua et al's work on fully connected convolutional GANs \cite{fccGAN}. A MMD-VAE, unlike a VAE, samples directly from the encoder rather than from an encoder's mean and std output fields. Hence, you do not see an intermediate layer of means and stds. The latent space Z is 256 dimensions. 
 
-The decoder is comprised of 3 fully connected layers D', upscaling to D. D is also based of the ResNet-18 architecture however where a conventional ResNet would scale down at the end of a convolutional layer D scales up.
+The decoder is a mirror image of the encoder. It is comprised of 3 fully connected layers D', upscaling to D. D is also based of the ResNet-18 architecture however where a conventional ResNet would scale down at the end of a convolutional layer D scales up.
 
 
 
@@ -42,13 +42,13 @@ The decoder is comprised of 3 fully connected layers D', upscaling to D. D is al
 Once the MMD-VAE is trained the horse and bird classes are subclassified and a pegasus generated through linear interpolation.
 
 \section{Methodology}
-The network reduced the MMD-VAE loss function \cite{infovae}. 
+The network reduces the MMD-VAE loss function \cite{infovae}. 
 There are 2 terms in the MMD-VAE loss function. Firstly, the reconstruction loss:
 \begin{equation}
     \mathcal{L}_{\textrm{recon}} = \mathbb{E}_{p_{\textrm{data}}(x)} \mathbb{E}_{q_\phi (z|x)} [\log p_\theta(x|z)]
 \end{equation}
 
-Where $p_\theta(x|z)$ is approximated by networks D' and D, parameterized by $\theta$ and likewise $q_\phi(z|x)$ is approximated by networks E and E', parameterized by $\phi$.
+Where $\mathbb{E}[p_\theta(x|z)]$ is approximated by networks D' and D, parameterized by $\theta$ and likewise $\mathbb{E}[q_\phi(z|x)]$ is approximated by networks E and E', parameterized by $\phi$.
 
 
 Secondly the Maximum Mean Discrepancy \cite{mmd}. Which is used to fit latent codes $z$ to prior $p(z)$.
@@ -67,9 +67,9 @@ where $q_\phi(z) =  \mathbb{E}[q_\phi(z|x)]$ and $\lambda$ is a scaling constant
 Batches of horse and bird images are then subclassified to create an improved dataset of horse and bird images. Random images from these dataset are then lineally interpolated between in latent space and the result decoded to create a pegasus image. 
 
 \section{Class subclassification}
-There is a huge variety of horse and bird images in CIFAR-10. Some images contain useful features such as white horses or birds' wings. Others images predominantly contain unhelpful features such as beaks. Linear interpolation is very sensitive to input images so selecting better horse and bird images will help produce better pegasus. To do this I use semi-supervised learning. Firstly, I clustered a sample of horse or bird pictures in latent space using k-means. Then, using a handful of ideal horse/bird images (\ref{fig:good_horses}), I selected the ideal clusters which should contain many similar features to the example images. If the ideal images fall in different cluster I take the union of these cluster.
+There is a huge variety of horse and bird images in CIFAR-10. Some images contain useful features such as white horses or bird wings. Others images predominantly contain unhelpful features such as beaks. Linear interpolation is very sensitive to input images so selecting better horse and bird images will help produce better pegasus. To do this I use semi-supervised learning. Firstly, I clustered a sample of horse or bird pictures in latent space using k-means. Then, using a handful of ideal horse/bird images (\ref{fig:good_horses}), I selected the "ideal" clusters which should contain many similar features to the example images. If the ideal images fall in different cluster I take the union of these cluster.
 
-I also experimented with clustering over the union of 2 classes and creating subclasses from the union/difference of these classes. The idea being different classes may share features. For example, the union of birds and planes could be wings. The difference between between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, clusters were mainly formed around global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
+I also experimented with clustering over the union of 2 classes and creating subclasses from the intersection/difference of these classes. The idea being different classes may share features. For example, the intersection of birds and planes could be wings. The difference between cats and birds could be the set of birds excluding bird faces. Although an interesting idea, clusters were mainly formed around global features such as background colour. With this in mind, I found I got better subclassification using the semi-supervised learning approach.
 
 
 \begin{figure}
@@ -101,12 +101,14 @@ From this batch, the most Pegasus-like image is:
     \includegraphics[width=0.1\textwidth]{figures/1_cropped.png}
 \end{center}
 
-As you can see there is a wide range of pegasuses. Some look rather good like and others are complete non-sense. Using linear interpolation made the output pegasus very sensitive to its' 2 input images. Although, subclassification improved this it certainly didn't solve the issue.  
+As you can see there is a wide range of pegasuses. Some look rather good like and others are complete non-sense. Using linear interpolation made the output pegasus very sensitive to its' 2 input images. Although, subclassification improved this it certainly didn't solve the issue.
+
+There are many brown pegasus in the batch because one of the ideal horses match to a very large, predominantly brown, horse cluster.
 
 \section{Limitations}
 The encoder failed to recreate fine details and textures. I suspect this is a confounding error accumulating through: the overkill ResNet architecture; basic data preparation; basic training strategy; and insufficient training time for the size of the network.
 
-The subclassification of images was noisy, so although it reduced the domain of horse and bird images it didn't entirely remove unwanted images like ostriches (of which CIFAR-10 contains many). 
+The subclassification of images was noisy, so although it reduced the domain of horse and bird images it didn't entirely remove unwanted images like ostriches (of which CIFAR-10 contains many).
 
 Finally, the method of linear interpolation between a horse and a bird to create a pegasus is fundamental flawed. A pegasus is a horse with wings, not a bird-horse amalgam. This is talked about more in the improvements section.  
 
@@ -115,13 +117,13 @@ Finally, the method of linear interpolation between a horse and a bird to create
 \section{Possible Improvements}
 There may be some scope for improvement by \textbf{tweaking the ResNet} construction. In the interest of time I used the exact construction as described by He et al \cite{ResNet}. However, making the ResNet shallower would have helped to speed up training hence more training could have been done in a limited time frame. Also, given that the described architecture was developed for the 112x112 ImageNet images it's likely not as well suited for 32x32 CIFAR-10 images. In particular the initial 7x7 convolution is likely too large given I only had the opportunity to train on CIFAR-10.
 
-\textbf{Cylindrical anealing} of MMD loss. The model uses the constant $\lambda=1$ for the MMD loss. This leads to vanishing MMD loss, much like VAEs suffer vanishing KL-loss. Fu et al \cite{cylindricalAnnealing} proposed the simple technique of cylindrically annealing $\lambda$, which they showed substantially improved reconstruction error. I suspect that cylindrical annealing would have similar benefits for MMD-VAEs.
+\textbf{Cylindrical anealing} of MMD loss. The model uses the constant $\lambda=1$ for the MMD loss. This leads to vanishing MMD loss, much like VAEs suffer vanishing KL-loss. Fu et al \cite{cylindricalAnnealing} proposed a simple technique of cylindrically annealing $\lambda$. They showed this could substantially improve reconstruction error. I suspect that cylindrical annealing would have similar benefits for MMD-VAEs.
 
 \textbf{Data preparation} could have been improved. I used random horizontal flips of the data but didn't have time to explore any other data preparation techniques. For example introducing color jitter may have helped the VAE to learn more color specific latent features which may have helped improve subclasses. Also random crops and scales may have helped the VAE better learn features such as wings. Also random crops and scales would help the model learn a degree of scale invariance which would open the door to doing transfer learning on STL-10.  
 
-\textbf{Subclasses} definitely improved the final pegasus, filtering out many poor images. However, there is still a lot of room from improvements. The subclasses generally differed by color composition rather than feature. For example a black horse a robin and an ostrich may be clustered as they share the same background. Subclasses clusters could be created using permuted data (random scale,crops e.t.c.). And then ideal images permuted and matched to clusters in a probabilistic manner. This could give much tighter subclasses.
+The use of \textbf{subclasses} definitely enhanced the final pegasus. However, there is still a lot of room for improvement. Firstly, sampling could be improved. Taking the union of ideal sets results in larger sets, like brown horses, dominating the final pegasus. A probabilistic sampling approach would solve this issue. Secondly, subclasses often shared global features such as background. Creating subclasses using randomly permuted (cropped, scaled, e.t.c.) data may lead to many more feature specific subclasses.
 
-\textbf{Replacing interpolation} would help a lot with creating better pegasus. If you extracted the latent representation of a wing and then applied this to the latent representation of a horse you would likely generate better pegasuses. There are many methods you could use to apply this wing to the horse, from simple addition, to interpolation, to sampling based methods. There are also many methods you could use to extract the latent representation of a wing, I would first investigate using Hierarchical Clustering.
+\textbf{Replacing interpolation} would help a lot with creating better pegasuses. If you extracted the latent representation of a wing and then applied this to the latent representation of a horse you would likely generate better pegasuses. You could extract the latent representation of a wing using class/subclass similarities. Then there are many methods you could use to apply this wing to a horse, from simple addition, to interpolation, to sampling based methods.
 
 
 \section*{Bonuses}
