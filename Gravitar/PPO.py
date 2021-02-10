@@ -1,3 +1,17 @@
+# This is a PPO agent.
+# the code is based off: https://github.com/higgsfield/RL-Adventure-2/blob/master/3.ppo.ipynb, no license specified
+# and based off: https://github.com/abhisheksuran/Reinforcement_Learning/blob/master/PPO.ipynb, no license specified
+# It uses the Generalized Advantage Estimation to estimate the advantage.
+# It uses a 4 frame deep frame buffer. Frames undergo minor cropping, then are greyscaled then are resized to 80x80
+# A frame is only added to the buffer every 4 frames, so the state deepends on the last 16 frames. 
+# The agent repeats its' action 4 times for the 1 frame buffered + 3 skipped
+# I would have liked to use multiple agents on diffrent thread but didn't have time to do so.
+# 
+# NOTE: I loop over rounds of timesteps rather than episodes like the example script. Hence one round may run through 0 or 1 or k episodes.
+# After experience gathering I replay any completed episodes to the marking script.
+# Episodes are preempted so if it wasn't finished in one round it will be continued in the next. 
+# From the marking script's perspective this is the same as if I looped through episodes. 
+
 import torch
 from torch import nn
 import gym
@@ -412,7 +426,6 @@ def plot_grad_flow(named_parameters):
             ave_grads.append(p.grad.abs().mean())
             max_grads.append(p.grad.abs().max())
     
-    #plt.tight_layout()
     plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
     plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
     plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
@@ -538,8 +551,6 @@ for i in round_iter:
         # Unwrap episode scores for marking script 
         for score in scores:
             
-            
-
             if score>best_score:
                 best_score = score
                 best_score_round=n_episode
@@ -577,9 +588,9 @@ for i in round_iter:
         entropy_coeff=current_aneal,
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon,
-        plot_grad=(i%gradient_plot==0))
+        plot_grad=((i%gradient_plot==0)and not marking_mode))
 
-    if i % gradient_plot == 0:
+    if i % gradient_plot == 0 and not marking_mode:
         plt.savefig("tmp/grad%d.png"%i, bbox_inches='tight')
         plt.close()
 
