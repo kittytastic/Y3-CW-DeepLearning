@@ -460,7 +460,7 @@ video_every = 15 # per episode
 test_interval = 50 # per rounds
 test_batch_size = 3 
 gradient_plot = 15 # per rounds
-
+marking_mode = False
 
 # Constants
 neurons_per_frame = 2048//4
@@ -479,6 +479,14 @@ env_test = gym.make(env_name)
 
 num_inputs  = env.observation_space
 num_outputs = env.action_space.n
+
+# MARKING
+seed = 742
+torch.manual_seed(seed)
+env.seed(seed)
+random.seed(seed)
+np.random.seed(seed)
+env.action_space.seed(seed)
 
 
 print("inputs: %s   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
@@ -499,7 +507,17 @@ frame_stack.setFirstFrame(state)
 partial_reward = 0
 curr_episode = 0
 
-round_iter = trange(0, rounds)
+if not marking_mode:
+    round_iter = trange(0, rounds)
+else:
+    round_iter = range(0, rounds)
+
+best_score = 0
+best_score_round = -1 
+
+# MARKING
+n_episode = 0
+marking  = []
 
 for i in round_iter:
 
@@ -511,8 +529,32 @@ for i in round_iter:
     curr_episode += len(scores)
     if len(scores) > 0:
         avg_score = np.mean(np.array(scores))
-        round_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
+        if not marking_mode:
+            round_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
         score_over_time += scores
+
+    if marking_mode:
+        # Because I loop over rounds rather than episodes
+        # Unwrap episode scores for marking script 
+        for score in scores:
+            
+            
+
+            if score>best_score:
+                best_score = score
+                best_score_round=n_episode
+
+            if n_episode%video_every==0:
+                print("round: %d, episode: %d, score: %d, best score: %d (%d episode)"%(i, n_episode, score, best_score, best_score_round))
+            
+            # do not change lines 44-48 here, they are for marking the submission log
+            marking.append(score)
+            if n_episode%100 == 0:
+                print("marking, episode: {}, score: {:.1f}, mean_score: {:.2f}, std_score: {:.2f}".format(
+                    n_episode, score, np.array(marking).mean(), np.array(marking).std()))
+                marking = []
+
+            n_episode += 1
 
     returns   = experience['returns'].detach()
     log_probs = experience['log_probs'].detach()
@@ -543,7 +585,7 @@ for i in round_iter:
 
 
     accumulateLoss(all_loss, losses)
-    
+
     if i % test_interval == 0:
         score_batch = [testReward(env_test, model, device, frame_stack_depth) for _ in range(test_batch_size)]
         avg_score = np.mean(score_batch)
