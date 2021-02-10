@@ -141,6 +141,9 @@ class ActorCritic(nn.Module):
         return self.critic(frames)
 
     def learn(self, epochs, experience, device, clip_epsilon=None, mini_batch_size=None, entropy_coeff=None, vf_coeff=None, plot_grad=False): 
+
+        self.train()
+
         loss_acc = torch.zeros(1, device=device, requires_grad=False)
         entropy_acc = torch.zeros(1, device=device, requires_grad=False)
         actor_acc = torch.zeros(1, device=device, requires_grad=False)
@@ -220,6 +223,8 @@ class ActorCritic(nn.Module):
 
 
 def testReward(env, actor_critic, device, frame_stack_depth):
+    actor_critic.eval()
+
     total_reward = 0
     state = env.reset()
     done = False
@@ -257,6 +262,8 @@ def playFrames(env, action, frame_count):
 
 
 def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, steps=None):
+
+    actor_critic.eval()
 
     rewards = torch.zeros(steps, requires_grad=False, device=device)
     states = torch.zeros(steps, frame_stack.depth, frame_stack.h, frame_stack.w, requires_grad=False, device=device)
@@ -481,15 +488,15 @@ learning_rate = 3e-4
 
 epochs = 3
 mini_batch_size = 256
-episodes = 1900
+episodes = 150
 timesteps = 1024
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 50
+video_every = 15
 test_interval = 50
 test_batch_size = 3
-gradient_plot = 50
+gradient_plot = 15
 
 
 # constants
