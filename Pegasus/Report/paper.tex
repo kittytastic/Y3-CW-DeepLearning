@@ -39,7 +39,7 @@ The decoder is a mirror image of the encoder. It is comprised of 3 fully connect
     \includegraphics[width=0.45\textwidth]{figures/clustering.png}
 \end{center}
 
-Once the MMD-VAE is trained the horse and bird classes are subclassified and a pegasus generated through linear interpolation.
+Once the MMD-VAE is trained the horse and bird classes are subclassified and a pegasus generated through linear interpolation. The proportion of bird used is $w_b \sim \mathcal{N}(0.2, 0.1^2)$. The proportion of horse used is $w_h = 1-w_b$.
 
 \section{Methodology}
 The network reduces the MMD-VAE loss function \cite{infovae}. 
