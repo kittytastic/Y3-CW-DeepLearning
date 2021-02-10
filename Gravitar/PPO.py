@@ -149,11 +149,6 @@ class ActorCritic(nn.Module):
             
                 state, action, old_log_probs, returns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
 
-                #advantage = advantage.unsqueeze(1)
-                #action = action.unsqueeze(1)
-                #old_log_probs = old_log_probs.unsqueeze(1)
-                #returns = returns.unsqueeze(1)
-                
                 #print("state: %s"%state)
                 #printMeta(state, "State")
                 #print("action: %s"%action)
@@ -186,7 +181,6 @@ class ActorCritic(nn.Module):
                 #print("Returns - values: %s"%str(returns - value))
                 #print("Min: %s"%torch.min(surr1, surr2))
 
-                #exit()
                 
                 actor_loss = - torch.min(surr1, surr2).mean()
                 critic_loss = 0.5 * (returns - value).pow(2).mean()
@@ -207,8 +201,6 @@ class ActorCritic(nn.Module):
                 actor_acc += actor_loss.detach()
                 entropy_acc -= (entropy_coeff * entropy).detach()
 
-                
-        
         loss_acc = loss_acc.mean().detach().cpu().numpy()
         entropy_acc = entropy_acc.mean().detach().cpu().numpy()
         actor_acc = actor_acc.mean().detach().cpu().numpy()
@@ -274,7 +266,6 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
         action_distribution = actor_critic.getActionDist(state)
         action = action_distribution.sample()
        
-
         estimated_value = actor_critic.getCriticFor(state).squeeze()
        
         next_frame, reward, done = playFrames(env, action.detach().cpu().numpy()[0], 4)
@@ -330,7 +321,7 @@ def getDevice(force_cpu=False):
     if force_cpu:
         return torch.device('cpu')
 
-    targetGPU = "GeForce GTX 1080 Ti"
+    targetGPU = ""
 
     if torch.cuda.is_available():
         targetDeviceNumber = None
@@ -347,11 +338,13 @@ def getDevice(force_cpu=False):
         if targetDeviceNumber != None:
             device = torch.device('cuda:%d'%targetDeviceNumber)
         else:
-            torch.device('cuda')
-            raise Exception("Cannot find target GPU")
+            device = torch.device('cuda')
+            print("Cannot find target GPU, using cuda:0")
+            #raise Exception("Cannot find target GPU")
     else:
         device = torch.device('cpu')
-        raise Exception("Not using GPU")
+        print("CUDA not enabled, using CPU")
+        #raise Exception("Not using GPU")
 
     return device
 
