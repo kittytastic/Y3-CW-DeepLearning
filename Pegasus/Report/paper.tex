@@ -94,16 +94,14 @@ I also experimented with clustering over the union of 2 classes and creating sub
 \section{Results}
 The best batch of pegasus images looks like this:
 \begin{center}
-    \includegraphics[width=0.5\textwidth]{figures/64_cropped.png}
+    \includegraphics[width=0.5\textwidth]{figures/possible_64.png}
 \end{center}
 From this batch, the most Pegasus-like image is:
 \begin{center}
-    \includegraphics[width=0.1\textwidth]{figures/1_cropped.png}
+    \includegraphics[width=0.1\textwidth]{figures/possible_1.png}
 \end{center}
 
-As you can see there is a wide range of pegasuses. Some look rather good like and others are complete non-sense. Using linear interpolation made the output pegasus very sensitive to its' 2 input images. Although, subclassification improved this it certainly didn't solve the issue.
-
-There are many brown pegasus in the batch because one of the ideal horses match to a very large, predominantly brown, horse cluster.
+As you can see there is a wide range of pegasuses. Some look rather good and others are complete non-sense. Using linear interpolation made the output pegasus very sensitive to its' 2 input images. Although, subclassification improved this it certainly didn't solve the issue.
 
 \section{Limitations}
 The encoder failed to recreate fine details and textures. I suspect this is a confounding error accumulating through: the overkill ResNet architecture; basic data preparation; basic training strategy; and insufficient training time for the size of the network.
@@ -119,15 +117,17 @@ There may be some scope for improvement by \textbf{tweaking the ResNet} construc
 
 \textbf{Cylindrical anealing} of MMD loss. The model uses the constant $\lambda=1$ for the MMD loss. This leads to vanishing MMD loss, much like VAEs suffer vanishing KL-loss. Fu et al \cite{cylindricalAnnealing} proposed a simple technique of cylindrically annealing $\lambda$. They showed this could substantially improve reconstruction error. I suspect that cylindrical annealing would have similar benefits for MMD-VAEs.
 
-\textbf{Data preparation} could have been improved. I used random horizontal flips of the data but didn't have time to explore any other data preparation techniques. For example introducing color jitter may have helped the VAE to learn more color specific latent features which may have helped improve subclasses. Also random crops and scales may have helped the VAE better learn features such as wings. Also random crops and scales would help the model learn a degree of scale invariance which would open the door to doing transfer learning on STL-10.  
+\textbf{Data preparation} could have been improved. I used random horizontal flips of the data but didn't have time to explore any other data preparation techniques. For example introducing color jitter may have helped the VAE to learn more color specific latent features which may have helped improve subclasses. Or introducing random crops and scales may have helped the VAE better learn features such as wings. Random crops and scales would also help the model learn a degree of scale invariance which would open the door to doing transfer learning on STL-10.  
 
-The use of \textbf{subclasses} definitely enhanced the final pegasus. However, there is still a lot of room for improvement. Firstly, sampling could be improved. Taking the union of ideal sets results in larger sets, like brown horses, dominating the final pegasus. A probabilistic sampling approach would solve this issue. Secondly, subclasses often shared global features such as background. Creating subclasses using randomly permuted (cropped, scaled, e.t.c.) data may lead to many more feature specific subclasses.
+The use of \textbf{subclasses} definitely enhanced the final pegasus. However, there is still a lot of room for improvement. Firstly, sampling could be improved. Taking the union of ideal sets can results in larger sets, like brown horses, dominating the final pegasus. A probabilistic sampling approach would solve this issue. Secondly, subclasses often shared global features such as background. Creating subclasses using randomly permuted (cropped, scaled, e.t.c.) data may lead to many more feature specific subclasses.
 
 \textbf{Replacing interpolation} would help a lot with creating better pegasuses. If you extracted the latent representation of a wing and then applied this to the latent representation of a horse you would likely generate better pegasuses. You could extract the latent representation of a wing using class/subclass similarities. Then there are many methods you could use to apply this wing to a horse, from simple addition, to interpolation, to sampling based methods.
 
 
 \section*{Bonuses}
-This submission has a total bonus of -2 marks as it is only trained on CIFAR-10.
+This submission has a bonus of -2 marks as it is only trained on CIFAR-10. I think it also has a bonus of +1 as nearly all the winged horses are white.
+
+This takes the total bonus to -1 marks.
 
 % you can have an unlimited number of references (they can go on the 5th page and span many additional pages without any penalty)
 \printbibliography
