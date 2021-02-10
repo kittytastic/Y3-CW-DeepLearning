@@ -366,7 +366,7 @@ def PlotAllLoss(loss, name):
         axs[i].plot(loss)
         axs[i].set_ylabel(loss_name)
         i+=1
-    plt.xlabel('Thing')
+    plt.xlabel('Rounds')
     plt.savefig('%s.png'%name)
     plt.close()
 
@@ -384,7 +384,7 @@ def RestoreModel(model, checkpoint_name):
 def plotScore(score, name):
     plt.plot(score)
     plt.ylabel("Score")
-    plt.xlabel('Something')
+    plt.xlabel('Episodes')
     plt.savefig('%s.png'%name)
     plt.close()
 
@@ -458,7 +458,7 @@ learning_rate = 3e-4
 
 epochs = 3
 mini_batch_size = 256
-episodes = 150*2
+rounds = 150*2
 timesteps = 1024
 frame_stack_depth = 4
 
@@ -484,8 +484,6 @@ env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (ep
 env_test = gym.make(env_name)
 
 
-
-
 num_inputs  = env.observation_space
 num_outputs = env.action_space.n
 
@@ -508,9 +506,9 @@ frame_stack.setFirstFrame(state)
 partial_reward = 0
 curr_episode = 0
 
-episode_iter = trange(0, episodes)
+round_iter = trange(0, rounds)
 
-for i in episode_iter:
+for i in round_iter:
 
     raw_experience, next_value, frame_stack, scores, partial_reward = accrueExperience(env, model, frame_stack, partial_reward, device, steps=timesteps)
 
@@ -520,7 +518,7 @@ for i in episode_iter:
     curr_episode += len(scores)
     if len(scores) > 0:
         avg_score = np.mean(np.array(scores))
-        episode_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
+        round_iter.set_description("Avg Score %.1f  (%d games)  %d episodes total" % (avg_score, len(scores), curr_episode))
         score_over_time += scores
 
     returns   = experience['returns'].detach()
@@ -529,9 +527,10 @@ for i in episode_iter:
     states    = experience['states']
     actions   = experience['actions']
     advantage = torch.Tensor.detach(returns - values)
-    advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-10)
     
-    #advantage = (advantage - advantage.mean())/advantage.std()
+    #advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-10)
+    
+
    
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
 
