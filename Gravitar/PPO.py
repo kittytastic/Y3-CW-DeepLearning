@@ -149,70 +149,67 @@ class ActorCritic(nn.Module):
         for _ in range(epochs):
             for mini_experience_batch in miniBatchIter(mini_batch_size, experience):
             
-                state, action, old_log_probs, retruns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
+                state, action, old_log_probs, returns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
 
-                #assertShape(state, 4)
-                #assertShape(action, 1)
-                #assertShape(old_log_probs, 1)
-                #assertShape(retruns, 1)
-                #assertShape(advantage, 1)
+                advantage = advantage.unsqueeze(1)
+                action = action.unsqueeze(1)
+                old_log_probs = old_log_probs.unsqueeze(1)
+                returns = returns.unsqueeze(1)
                 
+                #print("state: %s"%state)
+                #printMeta(state, "State")
+                #print("action: %s"%action)
+                #print("old_log_probs: %s"%(old_log_probs))
+                #print("returns: %s"%returns)
+                #print("advantage: %s"%advantage)
+
+
                 dist = self.getActionDist(state)
-               
-                value = self.getCriticFor(state).squeeze()
-                #assertShape(value, 1)
+                #print(dist)
 
+                value = self.getCriticFor(state)
+                #print("value: %s"%value)
                 
+                #print("Entopy dist: %s"%dist.entropy())
                 entropy = dist.entropy().mean()
-                #assertShape(entropy, 0)
+                #print("Entropy: %s"%entropy)
 
                 new_log_probs = dist.log_prob(action)
-                #assertShape(new_log_probs, 1)
-
                 #print("new_log_probs: %s"%new_log_probs)
-                #print("old_log_probs: %s"%(old_log_probs))
                 
                 ratio = (new_log_probs - old_log_probs).exp()
-                #assertShape(ratio, 1)
+                #print("ratio: %s"%ratio)
 
                 surr1 = ratio * advantage
                 surr2 = torch.clamp(ratio, 1.0-clip_epsilon, 1.0+clip_epsilon)*advantage
-                #assertShape(surr1, 1)
-                #assertShape(surr2, 1)
+                #print("surr1: %s"%surr1)
+                #print("surr2: %s"%surr2)
 
-                #print("Value: %s"%str(value))
-                #print("Returns: %s"%str(returns))
-                #print("Returns - values: %s"%str(retruns - value))
-
-                #print("Surr 1: %s"%surr1)
-                #print("Surr 2: %s"%surr2)
+                #print("Returns - values: %s"%str(returns - value))
                 #print("Min: %s"%torch.min(surr1, surr2))
+
 
                 
                 actor_loss = - torch.min(surr1, surr2).mean()
-                critic_loss = 0.5 * (retruns - value).pow(2).mean()
-                #assertShape(retruns - value, 1)
+                critic_loss = 0.5 * (returns - value).pow(2).mean()
 
-                #print(actor_loss)
-                #print(critic_loss)
+                #print("actor_loss: %s"%actor_loss)
+                #print("critic_loss: %s"%critic_loss)
 
                 loss =  vf_coeff * critic_loss + actor_loss - entropy_coeff * entropy
-
-                #print(loss)
-                #print(vf_coeff * critic_loss)
-                #print(actor_loss)
-                #print(entropy_coeff * entropy)
-
-                loss_acc += loss.detach()
-                critic_acc += (vf_coeff * critic_loss).detach()
-                actor_acc += actor_loss.detach()
-                entropy_acc -= (entropy_coeff * entropy).detach()
 
                 self.optimiser.zero_grad()
                 loss.backward()
                 if plot_grad:
                     plot_grad_flow(self.named_parameters())
                 self.optimiser.step()
+
+                loss_acc += loss.detach()
+                critic_acc += (vf_coeff * critic_loss).detach()
+                actor_acc += actor_loss.detach()
+                entropy_acc -= (entropy_coeff * entropy).detach()
+
+                
         
         loss_acc = loss_acc.mean().detach().cpu().numpy()
         entropy_acc = entropy_acc.mean().detach().cpu().numpy()
@@ -267,7 +264,6 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
     masks = torch.zeros(steps, requires_grad=False, device=device)
     values = torch.zeros(steps, requires_grad=False, device=device)
     log_probs = torch.zeros(steps, requires_grad=False, device=device)
-    
 
     
     episodes_scores = []
@@ -285,7 +281,7 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
        
 
         #next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
-        next_frame, reward, done = playFrames(env, action.detach().cpu().numpy(), 4)
+        next_frame, reward, done = playFrames(env, action.detach().cpu().numpy()[0], 4)
 
         log_prob = action_distribution.log_prob(action)
         #print("log_prob: %s"%log_prob)
@@ -300,8 +296,6 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
         total_reward += reward
         frame_stack.pushFrame(next_frame)
         
-        #if frame_stack.current_frame == 4:
-        #    plotFramestack(frame_stack.asState(), str(e))
         
         if done:
             episodes_scores.append(total_reward)
@@ -483,18 +477,19 @@ entropy_aneal_rounds = 150
 vf_coeff = 1
 epsilon = 0.1
 
-learning_rate = 0.001
+learning_rate = 3e-4
 
 epochs = 3
-mini_batch_size = 32
-episodes = 300
-timesteps = 512
+mini_batch_size = 256
+episodes = 1900
+timesteps = 1024
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 10
-test_interval = 40
+video_every = 50
+test_interval = 50
 test_batch_size = 3
+gradient_plot = 50
 
 
 # constants
@@ -647,9 +642,9 @@ for i in episode_iter:
         entropy_coeff=current_aneal,
         vf_coeff=vf_coeff,
         clip_epsilon=epsilon,
-        plot_grad=(i%10==0))
+        plot_grad=(i%gradient_plot==0))
 
-    if i % 10 == 0:
+    if i % gradient_plot == 0:
         plt.savefig("tmp/grad%d.png"%i, bbox_inches='tight')
         plt.close()
 
