@@ -154,10 +154,10 @@ class ActorCritic(nn.Module):
             
                 state, action, old_log_probs, returns, advantage = itemgetter('states', 'actions', 'log_probs', 'returns', 'advantage' )(mini_experience_batch)
 
-                advantage = advantage.unsqueeze(1)
-                action = action.unsqueeze(1)
-                old_log_probs = old_log_probs.unsqueeze(1)
-                returns = returns.unsqueeze(1)
+                #advantage = advantage.unsqueeze(1)
+                #action = action.unsqueeze(1)
+                #old_log_probs = old_log_probs.unsqueeze(1)
+                #returns = returns.unsqueeze(1)
                 
                 #print("state: %s"%state)
                 #printMeta(state, "State")
@@ -170,7 +170,7 @@ class ActorCritic(nn.Module):
                 dist = self.getActionDist(state)
                 #print(dist)
 
-                value = self.getCriticFor(state)
+                value = self.getCriticFor(state).squeeze()
                 #print("value: %s"%value)
                 
                 #print("Entopy dist: %s"%dist.entropy())
@@ -191,7 +191,7 @@ class ActorCritic(nn.Module):
                 #print("Returns - values: %s"%str(returns - value))
                 #print("Min: %s"%torch.min(surr1, surr2))
 
-
+                #exit()
                 
                 actor_loss = - torch.min(surr1, surr2).mean()
                 critic_loss = 0.5 * (returns - value).pow(2).mean()
@@ -488,7 +488,7 @@ learning_rate = 3e-4
 
 epochs = 3
 mini_batch_size = 256
-episodes = 150
+episodes = 150*2
 timesteps = 1024
 frame_stack_depth = 4
 
@@ -508,7 +508,7 @@ env_names = {
     'breakout': 'Breakout-v0',
     }
 
-env_name = env_names['breakout']
+env_name = env_names['gravitar']
 env = gym.make(env_name)
 env = gym.wrappers.Monitor(env, "./video", video_callable=lambda episode_id: (episode_id%video_every)==0, force=True)
 env_test = gym.make(env_name)
@@ -626,6 +626,7 @@ for i in episode_iter:
     actions   = experience['actions']
     #printMeta(actions, 'actions')
     advantage = torch.Tensor.detach(returns - values)
+    advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-10)
     #print(advantage)
     #advantage = (advantage - advantage.mean())/advantage.std()
     #print(advantage)
