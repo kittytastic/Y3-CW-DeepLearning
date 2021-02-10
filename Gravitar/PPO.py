@@ -88,18 +88,14 @@ class Block(nn.Module):
 class ConvFrames(nn.Module):
     def __init__(self, frames):
         super(ConvFrames, self).__init__()
-        # <- 4 x 80 x 80
-        self.conv1 = Block(frames, 16, 4, 0, 8) # -> 8 x 39 x 39
-        self.conv2 = Block(16, 32, 2, 0, 4) # -> 16 x 19 x 19
-        self.conv3 = Block(32, 32, 1, 1, 3) # -> 32 x 9 x 9
+        self.conv1 = Block(frames, 16, 4, 0, 8) 
+        self.conv2 = Block(16, 32, 2, 0, 4) 
+        self.conv3 = Block(32, 32, 1, 1, 3)
 
     def forward(self, x):
         x = self.conv1(x)
-        #printMeta(x, 'con1')
         x = self.conv2(x)
-        #printMeta(x, 'conv2')
         x = self.conv3(x)
-        #printMeta(x, 'conv3')
         x = x.flatten(1)
         return x
 
@@ -133,7 +129,6 @@ class ActorCritic(nn.Module):
 
     def getActionDist(self, frames):
         probs = self.actor(frames)
-        #print(actor_ops)
         dist      = torch.distributions.Categorical(probs)
         return dist
 
@@ -238,7 +233,6 @@ def testReward(env, actor_critic, device, frame_stack_depth):
         action_distribution = actor_critic.getActionDist(state)
         action = action_distribution.sample()
 
-        #next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
         next_frame, reward, done = playFrames(env, action.detach().cpu().numpy(), 4)
         
         total_reward += reward
@@ -278,21 +272,15 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
     for e in range(steps):
         state = frame_stack.asState()
         action_distribution = actor_critic.getActionDist(state)
-        #print("action_distribution: %s"%action_distribution)
         action = action_distribution.sample()
-        #print("action: %s"%action)
-
-
-        estimated_value = actor_critic.getCriticFor(state).squeeze()
-        #print("estimated value: %s Taking action: %s"%(estimated_value, action))
        
 
-        #next_frame, reward, done, _ = env.step(action.detach().cpu().numpy())
+        estimated_value = actor_critic.getCriticFor(state).squeeze()
+       
         next_frame, reward, done = playFrames(env, action.detach().cpu().numpy()[0], 4)
 
         log_prob = action_distribution.log_prob(action)
-        #print("log_prob: %s"%log_prob)
-
+       
         log_probs[e] = log_prob     
         masks[e] = int(not done) # Used to mask out
         rewards[e] = reward
@@ -302,8 +290,7 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
 
         total_reward += reward
         frame_stack.pushFrame(next_frame)
-        
-        
+         
         if done:
             episodes_scores.append(total_reward)
             total_reward = 0
@@ -311,16 +298,8 @@ def accrueExperience(env, actor_critic, frame_stack, partial_reward, device, ste
             frame_stack.setFirstFrame(next_frame)
 
 
-    #printMeta(states, 'states')
-    #printMeta(rewards, 'rewards')
-    #printMeta(actions, 'actions')
-    #printMeta(masks, 'masks')
-    #printMeta(values, 'values')
-    #printMeta(log_probs, 'log_probs')
-
     # We need one extra value for GAE calculation
     next_value = actor_critic.getCriticFor(frame_stack.asState()).flatten()
-    #printMeta(next_value, 'next_value')
 
 
     return {'masks':masks, 'rewards':rewards, 'states':states, 'actions':actions, 'log_probs': log_probs, 'values':values}, next_value, frame_stack, episodes_scores, total_reward
@@ -330,16 +309,10 @@ def proccessExperiences(next_value, raw_experience, steps, device, gamma=None, t
 
     values = torch.hstack((values, next_value))
 
-    #assertShape(masks, 1)
-    #assertShape(rewards, 1)
-    #assertShape(values, 1)
-
     # Calculate General advantage estimation and returns for each step
     gae = 0
     returns = torch.zeros(steps, requires_grad=False, device=device)
     for step in reversed(range(len(rewards))):
-        #print("Reward: %s    Value:  %s     Value+1: %s  Mask: %s"%(str(rewards[step]), str(values[step]), str(values[step+1]), str(masks[step])))
-
         delta = rewards[step] - values[step] + gamma*values[step+1]*masks[step] 
         gae = delta + gamma * tau * masks[step] * gae    
         returns[step] = gae + values[step]
@@ -350,7 +323,6 @@ def miniBatchIter(mini_batch_size, experiences):
     batch_size = len(experiences[list(experiences.keys())[0]])
     for _ in range(batch_size//mini_batch_size):
         rand_ids = np.random.randint(0, batch_size, mini_batch_size)
-        #rand_ids = list(range(mini_batch_size))
         yield {key: field[rand_ids] for key, field in experiences.items()}
 
 def getDevice(force_cpu=False):
@@ -430,7 +402,7 @@ def plotFramestack(tensor, name):
     plt.savefig('tmp/%s.png'%name)
     plt.close()
 
-# https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/8
+# Gradient investigating code from: https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/8, no license specified
 from matplotlib.lines import Line2D
 def plot_grad_flow(named_parameters):
     '''Plots the gradients flowing through different layers in the net during training.
@@ -476,8 +448,6 @@ def assertShape(tensor, dim):
 discount_gamma = 0.99
 GAE_tau = 0.95
 
-
-
 entropy_coeff = 0.01
 entropy_aneal_target = 0.01 
 entropy_aneal_rounds = 150 
@@ -493,13 +463,13 @@ timesteps = 1024
 frame_stack_depth = 4
 
 # Logging parameters
-video_every = 15
-test_interval = 50
-test_batch_size = 3
-gradient_plot = 15
+video_every = 15 # per episode
+test_interval = 50 # per rounds
+test_batch_size = 3 
+gradient_plot = 15 # per rounds
 
 
-# constants
+# Constants
 neurons_per_frame = 2048//4
 
 env_names = {
@@ -515,67 +485,6 @@ env_test = gym.make(env_name)
 
 
 
-import time
-'''
-
-
-env.reset()
-for i in range(10):
-    print(i)
-    env.render()
-    time.sleep(1)
-    env.step(1)
-exit()
-'''
-
-'''
-tf = TransformFrame()
-fs = FrameStack(4, torch.device('cpu'))
-con_boi = ConvFrames(4)
-frame = env.reset()
-
-
-fs.setFirstFrame(frame)
-printMeta(fs.asState(), 'fs')
-#for i in range(10):
-#    env.render()
-#    time.sleep(0.2)
-#    frame, _ , _ , _ = env.step(1)
-#    fs.pushFrame(frame)
-
-#plotFramestack(fs.asState(), 'fs')
-
-covved = con_boi(fs.asState())
-printMeta(covved, 'conv out')
-
-
-#tf_frame = tf(frame)
-#printMeta(tf_frame, 'out frame')
-#debugTensor(tf_frame)
-
-exit()
-'''
-
-'''
-con_boi = ConvFrames(3)
-fs = FrameStack(3)
-
-frame = torch.rand(210, 160, 3)
-fs.setFirstFrame(frame)
-fb = fs.asState()
-printMeta(fb, "States")
-
-lots = fb.repeat((30, 1, 1, 1))
-printMeta(lots, "lots")
-
-tmp = con_boi(fb)
-printMeta(tmp, "Convved")
-
-tmp = con_boi(lots)
-printMeta(tmp, "lots Convved")
-
-exit()
-'''
 
 num_inputs  = env.observation_space
 num_outputs = env.action_space.n
@@ -585,7 +494,6 @@ print("inputs: %s   outputs: %d   for: %s"%(num_inputs, num_outputs, env_name))
 device = getDevice(force_cpu=False)
 
 model = ActorCritic(frame_stack_depth, num_outputs, 256, lr=learning_rate).to(device)
-#model.eval()
 
 
 score_over_time = []
@@ -616,35 +524,20 @@ for i in episode_iter:
         score_over_time += scores
 
     returns   = experience['returns'].detach()
-    #printMeta(returns, 'returns')
     log_probs = experience['log_probs'].detach()
-    #printMeta(log_probs, 'log_probs')
     values    = experience['values'].detach()
-    #printMeta(values, 'values')
     states    = experience['states']
-    #printMeta(states, 'states')
     actions   = experience['actions']
-    #printMeta(actions, 'actions')
     advantage = torch.Tensor.detach(returns - values)
     advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-10)
-    #print(advantage)
+    
     #advantage = (advantage - advantage.mean())/advantage.std()
-    #print(advantage)
-    #printMeta(advantage, 'advantage')
-    #print(returns)
-    #print(advantage)
-
-    #assertShape(returns, 1)
-    #assertShape(log_probs, 1)
-    #assertShape(states, 4)
-    #assertShape(actions, 1)
-    #assertShape(advantage, 1)
-
-
+   
     experience = {'returns':returns, 'log_probs':log_probs, 'values':values, 'states':states, 'actions':actions, 'advantage':advantage}
 
     current_aneal = entropy_coeff - ((entropy_coeff - entropy_aneal_target)*min((i/entropy_aneal_rounds),1))
-    #print(current_aneal)
+    
+
     losses = model.learn(epochs, experience, device,
         mini_batch_size=mini_batch_size,
         entropy_coeff=current_aneal,
@@ -672,5 +565,3 @@ for i in episode_iter:
 PlotAllLoss(all_loss, 'loss')
 plotScore(score_over_time, 'score')
 plotScore(experiment_scores, 'experiment_score')
-
-#CheckpointModel(actor_critic, 'test', all_loss)
